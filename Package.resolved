@@ -1,0 +1,14 @@
+{
+  "pins": [
+    {
+      "identity": "firebase-ios-sdk",
+      "kind": "remoteSourceControl",
+      "location": "https://github.com/firebase/firebase-ios-sdk",
+      "state": {
+        "revision": "latest",
+        "version": "10.19.0"
+      }
+    }
+  ],
+  "version": 2
+}

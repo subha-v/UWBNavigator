@@ -10,6 +10,8 @@ import MultipeerConnectivity
 
 struct MPCSessionConstants {
     static let kKeyIdentity: String = "identity"
+    static let kKeyRole: String = "role"
+    static let kKeyUserId: String = "userId"
 }
 
 class MPCSession: NSObject, MCSessionDelegate, MCNearbyServiceBrowserDelegate, MCNearbyServiceAdvertiserDelegate {
@@ -18,21 +20,48 @@ class MPCSession: NSObject, MCSessionDelegate, MCNearbyServiceBrowserDelegate, M
     var peerDisconnectedHandler: ((MCPeerID) -> Void)?
     private let serviceString: String
     private let mcSession: MCSession
-    private let localPeerID = MCPeerID(displayName: UIDevice.current.name)
+    private let localPeerID: MCPeerID
     private let mcAdvertiser: MCNearbyServiceAdvertiser
     private let mcBrowser: MCNearbyServiceBrowser
     private let identityString: String
     private let maxNumPeers: Int
+    private let userRole: String?
+    private let userId: String?
 
     init(service: String, identity: String, maxPeers: Int) {
         serviceString = service
         identityString = identity
+        maxNumPeers = maxPeers
+        
+        // Extract role and userId from identity if available
+        // Identity format: "role-userId" (e.g., "anchor-abc123" or "navigator-xyz789")
+        let components = identity.components(separatedBy: "-")
+        if components.count >= 2 {
+            userRole = components[0]
+            userId = components[1]
+            // Create peer ID with both role and userId for proper identification
+            localPeerID = MCPeerID(displayName: "\(components[0])-\(components[1])")
+        } else {
+            userRole = nil
+            userId = nil
+            localPeerID = MCPeerID(displayName: UIDevice.current.name)
+        }
+        
         mcSession = MCSession(peer: localPeerID, securityIdentity: nil, encryptionPreference: .required)
+        
+        // Include role information in discovery info
+        var discoveryInfo = [MPCSessionConstants.kKeyIdentity: identityString]
+        if let role = userRole {
+            discoveryInfo[MPCSessionConstants.kKeyRole] = role
+        }
+        if let id = userId {
+            discoveryInfo[MPCSessionConstants.kKeyUserId] = id
+        }
+        
         mcAdvertiser = MCNearbyServiceAdvertiser(peer: localPeerID,
-                                                 discoveryInfo: [MPCSessionConstants.kKeyIdentity: identityString],
+                                                 discoveryInfo: discoveryInfo,
                                                  serviceType: serviceString)
         mcBrowser = MCNearbyServiceBrowser(peer: localPeerID, serviceType: serviceString)
-        maxNumPeers = maxPeers
 
         super.init()
         mcSession.delegate = self
@@ -135,10 +164,35 @@ class MPCSession: NSObject, MCSessionDelegate, MCNearbyServiceBrowserDelegate, M
 
     // MARK: - `MCNearbyServiceBrowserDelegate`.
     internal func browser(_ browser: MCNearbyServiceBrowser, foundPeer peerID: MCPeerID, withDiscoveryInfo info: [String: String]?) {
-        guard let identityValue = info?[MPCSessionConstants.kKeyIdentity] else {
+        guard let peerIdentity = info?[MPCSessionConstants.kKeyIdentity] else {
             return
         }
-        if identityValue == identityString && mcSession.connectedPeers.count < maxNumPeers {
+        
+        // Role-based connection logic
+        let peerRole = info?[MPCSessionConstants.kKeyRole]
+        let peerId = info?[MPCSessionConstants.kKeyUserId]
+        
+        // Determine if we should connect based on roles
+        var shouldConnect = false
+        
+        if userRole == "navigator" && peerRole == "anchor" {
+            // Navigator connects to anchors
+            // Check if this is the selected anchor
+            if let selectedAnchorId = UserSession.shared.selectedAnchorId {
+                shouldConnect = peerId == selectedAnchorId
+            } else {
+                // No specific anchor selected, connect to any anchor
+                shouldConnect = true
+            }
+        } else if userRole == "anchor" && peerRole == "navigator" {
+            // Anchor accepts connections from navigators
+            shouldConnect = true
+        } else if userRole == nil || peerRole == nil {
+            // Fallback to original identity matching for backward compatibility
+            shouldConnect = peerIdentity == identityString
+        }
+        
+        if shouldConnect && mcSession.connectedPeers.count < maxNumPeers {
             browser.invitePeer(peerID, to: mcSession, withContext: nil, timeout: 10)
         }
     }
