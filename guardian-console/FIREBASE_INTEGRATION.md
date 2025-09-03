@@ -1,29 +1,22 @@
 # Guardian Console Firebase Integration
 
 ## Overview
-The Guardian Console has been integrated with Firebase to show real-time data from the UWB navigation system.
+The Guardian Console is fully integrated with Firebase to show real-time data from the UWB navigation system. All data is live from Firestore with no mock data.
 
 ## Setup Instructions
 
-1. **Install Dependencies** (Already completed)
+1. **Install Dependencies**
    ```bash
-   npm install firebase
+   npm install
    ```
 
-2. **Switch to Firebase Version**
-   To use the Firebase-integrated version instead of the mock data version:
-   ```bash
-   # Rename the current page to backup
-   mv app/page.tsx app/page-mock.tsx
-   
-   # Use the Firebase version
-   mv app/page-firebase.tsx app/page.tsx
-   ```
-
-3. **Run the Application**
+2. **Run the Application**
    ```bash
    npm run dev
    ```
+   
+3. **Access Dashboard**
+   Open [http://localhost:3000](http://localhost:3000) in your browser
 
 ## Features
 
