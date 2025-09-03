@@ -81,6 +81,7 @@ class LoginViewController: UIViewController {
         super.viewDidLoad()
         setupUI()
         setupActions()
+        setupAdminAccess()
     }
     
     override func viewWillAppear(_ animated: Bool) {
@@ -150,6 +151,14 @@ class LoginViewController: UIViewController {
         view.addGestureRecognizer(tapGesture)
     }
     
+    private func setupAdminAccess() {
+        // Add long press gesture to logo for admin access
+        let longPressGesture = UILongPressGestureRecognizer(target: self, action: #selector(adminAccessTapped))
+        longPressGesture.minimumPressDuration = 3.0
+        logoLabel.isUserInteractionEnabled = true
+        logoLabel.addGestureRecognizer(longPressGesture)
+    }
+    
     // MARK: - Actions
     @objc private func loginButtonTapped() {
         dismissKeyboard()
@@ -195,6 +204,33 @@ class LoginViewController: UIViewController {
     
     @objc private func dismissKeyboard() {
         view.endEditing(true)
+    }
+    
+    @objc private func adminAccessTapped(_ gesture: UILongPressGestureRecognizer) {
+        guard gesture.state == .began else { return }
+        
+        // Show alert to confirm admin access
+        let alert = UIAlertController(title: "Admin Access", message: "Enter admin password to update anchor destinations", preferredStyle: .alert)
+        
+        alert.addTextField { textField in
+            textField.placeholder = "Password"
+            textField.isSecureTextEntry = true
+        }
+        
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        alert.addAction(UIAlertAction(title: "Continue", style: .default) { [weak self] _ in
+            guard let password = alert.textFields?.first?.text,
+                  password == "admin2024" else {
+                self?.showError("Invalid admin password")
+                return
+            }
+            
+            // Navigate to admin update view
+            let adminVC = AdminUpdateViewController()
+            self?.navigationController?.pushViewController(adminVC, animated: true)
+        })
+        
+        present(alert, animated: true)
     }
     
     // MARK: - Helper Methods

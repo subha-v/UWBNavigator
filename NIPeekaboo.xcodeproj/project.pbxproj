@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		0A7C6E61248C5CEE00DEC871 /* MathUtilities.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A7C6E60248C5CEE00DEC871 /* MathUtilities.swift */; };
+		17578EC42E67C6F000C32B91 /* AdminUpdateViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17578EC32E67C6F000C32B91 /* AdminUpdateViewController.swift */; };
 		1774E0372E627B1700F531A8 /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = 1774E0362E627B1700F531A8 /* FirebaseAuth */; };
 		1774E0392E627B1700F531A8 /* FirebaseFirestore in Frameworks */ = {isa = PBXBuildFile; productRef = 1774E0382E627B1700F531A8 /* FirebaseFirestore */; };
 		1774E03B2E627B1700F531A8 /* FirebaseFirestoreCombine-Community in Frameworks */ = {isa = PBXBuildFile; productRef = 1774E03A2E627B1700F531A8 /* FirebaseFirestoreCombine-Community */; };
@@ -20,6 +21,7 @@
 		1774E04E2E627C7600F531A8 /* LoginViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1774E0462E627C7600F531A8 /* LoginViewController.swift */; };
 		1774E04F2E627C7600F531A8 /* SignUpViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1774E04A2E627C7600F531A8 /* SignUpViewController.swift */; };
 		1774E0502E627C7600F531A8 /* UserSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1774E04B2E627C7600F531A8 /* UserSession.swift */; };
+		17FF45D52E68BA3B004726AD /* DistanceErrorTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17FF45D42E68BA3B004726AD /* DistanceErrorTracker.swift */; };
 		71418B3224949358007DAB1C /* README.md in Resources */ = {isa = PBXBuildFile; fileRef = 71418B3124949358007DAB1C /* README.md */; };
 		AD026E6B248E77B10016A2B6 /* MPCSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD026E6A248E77B10016A2B6 /* MPCSession.swift */; };
 		AD026E6E248E77F60016A2B6 /* MultipeerConnectivity.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AD026E6D248E77F60016A2B6 /* MultipeerConnectivity.framework */; };
@@ -33,6 +35,7 @@
 
 /* Begin PBXFileReference section */
 		0A7C6E60248C5CEE00DEC871 /* MathUtilities.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MathUtilities.swift; sourceTree = "<group>"; };
+		17578EC32E67C6F000C32B91 /* AdminUpdateViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdminUpdateViewController.swift; sourceTree = "<group>"; };
 		1774E03C2E627B4A00F531A8 /* GoogleService-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "GoogleService-Info.plist"; sourceTree = "<group>"; };
 		1774E03E2E627C5600F531A8 /* AnchorSelectionViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnchorSelectionViewController.swift; sourceTree = "<group>"; };
 		1774E03F2E627C5600F531A8 /* AnchorViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnchorViewController.swift; sourceTree = "<group>"; };
@@ -42,6 +45,7 @@
 		1774E0492E627C7600F531A8 /* NavigatorViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NavigatorViewController.swift; sourceTree = "<group>"; };
 		1774E04A2E627C7600F531A8 /* SignUpViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SignUpViewController.swift; sourceTree = "<group>"; };
 		1774E04B2E627C7600F531A8 /* UserSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserSession.swift; sourceTree = "<group>"; };
+		17FF45D42E68BA3B004726AD /* DistanceErrorTracker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DistanceErrorTracker.swift; sourceTree = "<group>"; };
 		43D6B566D60E1D86FC1BA04C /* SampleCode.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = SampleCode.xcconfig; path = Configuration/SampleCode.xcconfig; sourceTree = "<group>"; };
 		62C8A7F1105E38E9FB343714 /* LICENSE.txt */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text; path = LICENSE.txt; sourceTree = "<group>"; };
 		71418B3124949358007DAB1C /* README.md */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
@@ -130,6 +134,8 @@
 		ADDB28FC24897F7D00F72056 /* NIPeekaboo */ = {
 			isa = PBXGroup;
 			children = (
+				17FF45D42E68BA3B004726AD /* DistanceErrorTracker.swift */,
+				17578EC32E67C6F000C32B91 /* AdminUpdateViewController.swift */,
 				1774E0462E627C7600F531A8 /* LoginViewController.swift */,
 				1774E0492E627C7600F531A8 /* NavigatorViewController.swift */,
 				1774E04A2E627C7600F531A8 /* SignUpViewController.swift */,
@@ -232,12 +238,14 @@
 				AD026E6B248E77B10016A2B6 /* MPCSession.swift in Sources */,
 				1774E0412E627C5600F531A8 /* AnchorSelectionViewController.swift in Sources */,
 				1774E0422E627C5600F531A8 /* ArrowView.swift in Sources */,
+				17FF45D52E68BA3B004726AD /* DistanceErrorTracker.swift in Sources */,
 				1774E0452E627C6200F531A8 /* FirebaseManager.swift in Sources */,
 				1774E0432E627C5600F531A8 /* AnchorViewController.swift in Sources */,
 				ADDB28FE24897F7D00F72056 /* AppDelegate.swift in Sources */,
 				1774E04C2E627C7600F531A8 /* NavigatorViewController.swift in Sources */,
 				1774E04E2E627C7600F531A8 /* LoginViewController.swift in Sources */,
 				1774E04F2E627C7600F531A8 /* SignUpViewController.swift in Sources */,
+				17578EC42E67C6F000C32B91 /* AdminUpdateViewController.swift in Sources */,
 				1774E0502E627C7600F531A8 /* UserSession.swift in Sources */,
 				0A7C6E61248C5CEE00DEC871 /* MathUtilities.swift in Sources */,
 			);

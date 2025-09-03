@@ -82,6 +82,23 @@ class SignUpViewController: UIViewController {
         return label
     }()
     
+    private let destinationLabel: UILabel = {
+        let label = UILabel()
+        label.text = "Select Anchor Destination:"
+        label.font = UIFont.systemFont(ofSize: 18, weight: .medium)
+        label.isHidden = true
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }()
+    
+    private let destinationSegmentedControl: UISegmentedControl = {
+        let control = UISegmentedControl(items: ["Window", "Meeting Room", "Kitchen"])
+        control.selectedSegmentIndex = 0
+        control.isHidden = true
+        control.translatesAutoresizingMaskIntoConstraints = false
+        return control
+    }()
+    
     private let signUpButton: UIButton = {
         let button = UIButton(type: .system)
         button.setTitle("Sign Up", for: .normal)
@@ -136,6 +153,8 @@ class SignUpViewController: UIViewController {
         view.addSubview(roleLabel)
         view.addSubview(roleSegmentedControl)
         view.addSubview(roleDescriptionLabel)
+        view.addSubview(destinationLabel)
+        view.addSubview(destinationSegmentedControl)
         view.addSubview(signUpButton)
         view.addSubview(errorLabel)
         view.addSubview(activityIndicator)
@@ -189,14 +208,24 @@ class SignUpViewController: UIViewController {
             roleDescriptionLabel.leadingAnchor.constraint(equalTo: emailTextField.leadingAnchor),
             roleDescriptionLabel.trailingAnchor.constraint(equalTo: emailTextField.trailingAnchor),
             
+            // Destination Label
+            destinationLabel.topAnchor.constraint(equalTo: roleDescriptionLabel.bottomAnchor, constant: 20),
+            destinationLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            
+            // Destination Segmented Control
+            destinationSegmentedControl.topAnchor.constraint(equalTo: destinationLabel.bottomAnchor, constant: 15),
+            destinationSegmentedControl.leadingAnchor.constraint(equalTo: emailTextField.leadingAnchor),
+            destinationSegmentedControl.trailingAnchor.constraint(equalTo: emailTextField.trailingAnchor),
+            destinationSegmentedControl.heightAnchor.constraint(equalToConstant: 44),
+            
             // Error Label
-            errorLabel.topAnchor.constraint(equalTo: roleDescriptionLabel.bottomAnchor, constant: 10),
+            errorLabel.topAnchor.constraint(equalTo: destinationSegmentedControl.bottomAnchor, constant: 10),
             errorLabel.leadingAnchor.constraint(equalTo: emailTextField.leadingAnchor),
             errorLabel.trailingAnchor.constraint(equalTo: emailTextField.trailingAnchor),
             
             // Sign Up Button
             signUpButton.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            signUpButton.topAnchor.constraint(equalTo: roleDescriptionLabel.bottomAnchor, constant: 30),
+            signUpButton.topAnchor.constraint(equalTo: destinationSegmentedControl.bottomAnchor, constant: 30),
             signUpButton.leadingAnchor.constraint(equalTo: emailTextField.leadingAnchor),
             signUpButton.trailingAnchor.constraint(equalTo: emailTextField.trailingAnchor),
             signUpButton.heightAnchor.constraint(equalToConstant: 50),
@@ -242,9 +271,16 @@ class SignUpViewController: UIViewController {
         
         let role: UserRole = roleSegmentedControl.selectedSegmentIndex == 0 ? .navigator : .anchor
         
+        // Get selected destination for anchors
+        var destination: String? = nil
+        if role == .anchor {
+            let destinations = ["window", "meeting_room", "kitchen"]
+            destination = destinations[destinationSegmentedControl.selectedSegmentIndex]
+        }
+        
         setLoadingState(true)
         
-        FirebaseManager.shared.signUp(email: email, password: password, displayName: displayName, role: role) { [weak self] result in
+        FirebaseManager.shared.signUp(email: email, password: password, displayName: displayName, role: role, destination: destination) { [weak self] result in
             DispatchQueue.main.async {
                 self?.setLoadingState(false)
                 
@@ -261,9 +297,15 @@ class SignUpViewController: UIViewController {
     
     @objc private func roleChanged() {
         if roleSegmentedControl.selectedSegmentIndex == 0 {
+            // Navigator selected
             roleDescriptionLabel.text = "Navigator: Find and navigate to anchor points"
+            destinationLabel.isHidden = true
+            destinationSegmentedControl.isHidden = true
         } else {
+            // Anchor selected
             roleDescriptionLabel.text = "Anchor: Serve as a destination point for navigators"
+            destinationLabel.isHidden = false
+            destinationSegmentedControl.isHidden = false
         }
     }
     

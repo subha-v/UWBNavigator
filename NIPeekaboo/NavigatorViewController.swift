@@ -8,6 +8,7 @@ View controller for navigator phones with arrow-based navigation display.
 import UIKit
 import NearbyInteraction
 import MultipeerConnectivity
+import Firebase
 
 class NavigatorViewController: UIViewController, NISessionDelegate {
     
@@ -123,12 +124,14 @@ class NavigatorViewController: UIViewController, NISessionDelegate {
     }()
     
     // MARK: - NearbyInteraction Properties
-    private var session: NISession?
-    private var peerDiscoveryToken: NIDiscoveryToken?
+    private var sessions: [MCPeerID: NISession] = [:]
+    private var peerTokens: [MCPeerID: NIDiscoveryToken] = [:]
     private var mpc: MPCSession?
-    private var connectedAnchor: MCPeerID?
-    private var sharedTokenWithPeer = false
+    private var connectedAnchors: [MCPeerID] = []
+    private var anchorDistances: [MCPeerID: Float] = [:]
+    private var primaryAnchor: MCPeerID?
     private let nearbyDistanceThreshold: Float = 0.3
+    private var measurementTimer: Timer?
     
     // MARK: - Navigation Properties
     var selectedAnchorId: String?
@@ -243,16 +246,11 @@ class NavigatorViewController: UIViewController, NISessionDelegate {
     
     // MARK: - Navigator Mode
     private func startNavigatorMode() {
-        // Create NISession
-        session = NISession()
-        session?.delegate = self
-        sharedTokenWithPeer = false
-        
-        // Initialize MultipeerConnectivity with navigator role
+        // Initialize MultipeerConnectivity with navigator role - connect to multiple anchors
         #if targetEnvironment(simulator)
-        mpc = MPCSession(service: "nisample", identity: "navigator-simulator", maxPeers: 1)
+        mpc = MPCSession(service: "nisample", identity: "navigator-simulator", maxPeers: 10)
         #else
-        mpc = MPCSession(service: "nisample", identity: "navigator-\(UserSession.shared.userId ?? "unknown")", maxPeers: 1)
+        mpc = MPCSession(service: "nisample", identity: "navigator-\(UserSession.shared.userId ?? "unknown")", maxPeers: 10)
         #endif
         
         mpc?.peerConnectedHandler = { [weak self] peer in
@@ -273,38 +271,62 @@ class NavigatorViewController: UIViewController, NISessionDelegate {
     
     // MARK: - Anchor Connection Management
     private func handleAnchorConnected(_ peer: MCPeerID) {
-        // Check if this is the selected anchor
-        // Peer display name format: "anchor-userId"
-        guard let anchorId = selectedAnchorId,
-              peer.displayName == "anchor-\(anchorId)" else {
-            // Not the anchor we're looking for
-            return
-        }
-        
+        // Accept connection from any anchor for multi-anchor tracking
         DispatchQueue.main.async { [weak self] in
-            self?.connectedAnchor = peer
-            self?.updateStatus("Connected to anchor")
+            // Create new NISession for this anchor
+            let session = NISession()
+            session.delegate = self
+            self?.sessions[peer] = session
+            
+            // Check if this is the primary selected anchor
+            if let anchorId = self?.selectedAnchorId,
+               peer.displayName == "anchor-\(anchorId)" {
+                self?.primaryAnchor = peer
+                self?.updateStatus("Connected to primary anchor")
+            } else {
+                self?.updateStatus("Connected to \(self?.connectedAnchors.count ?? 0) anchors")
+            }
+            
+            self?.connectedAnchors.append(peer)
             
             // Share discovery token
-            if let myToken = self?.session?.discoveryToken {
-                self?.shareDiscoveryToken(myToken, with: peer)
+            if let discoveryToken = session.discoveryToken {
+                self?.shareDiscoveryToken(discoveryToken, with: peer)
             }
+            
+            // Start tracking session if needed
+            self?.startTrackingSessionIfNeeded()
         }
     }
     
     private func handleAnchorDisconnected(_ peer: MCPeerID) {
         DispatchQueue.main.async { [weak self] in
-            if self?.connectedAnchor == peer {
-                self?.connectedAnchor = nil
-                self?.peerDiscoveryToken = nil
-                self?.sharedTokenWithPeer = false
+            // Clean up session for this anchor
+            self?.sessions[peer]?.invalidate()
+            self?.sessions.removeValue(forKey: peer)
+            self?.peerTokens.removeValue(forKey: peer)
+            self?.anchorDistances.removeValue(forKey: peer)
+            
+            if let index = self?.connectedAnchors.firstIndex(of: peer) {
+                self?.connectedAnchors.remove(at: index)
+            }
+            
+            // Check if this was the primary anchor
+            if self?.primaryAnchor == peer {
+                self?.primaryAnchor = nil
                 self?.currentDistanceDirectionState = .unknown
-                self?.updateStatus("Disconnected from anchor")
+                self?.updateStatus("Disconnected from primary anchor")
                 self?.updateVisualization(state: .unknown, nearbyObject: nil)
-                
-                // Restart session
-                self?.session?.invalidate()
-                self?.startNavigatorMode()
+            }
+            
+            // Update status
+            if self?.connectedAnchors.isEmpty == true {
+                self?.updateStatus("Searching for anchors...")
+                self?.measurementTimer?.invalidate()
+                self?.measurementTimer = nil
+                DistanceErrorTracker.shared.endSession()
+            } else {
+                self?.updateStatus("Connected to \(self?.connectedAnchors.count ?? 0) anchors")
             }
         }
     }
@@ -315,12 +337,19 @@ class NavigatorViewController: UIViewController, NISessionDelegate {
         }
         
         DispatchQueue.main.async { [weak self] in
-            self?.peerDiscoveryToken = discoveryToken
+            self?.peerTokens[peer] = discoveryToken
             
-            // Start tracking with anchor
-            let config = NINearbyPeerConfiguration(peerToken: discoveryToken)
-            self?.session?.run(config)
-            self?.updateStatus("Tracking anchor")
+            // Start tracking with this anchor
+            if let session = self?.sessions[peer] {
+                let config = NINearbyPeerConfiguration(peerToken: discoveryToken)
+                session.run(config)
+                
+                if peer == self?.primaryAnchor {
+                    self?.updateStatus("Tracking primary anchor")
+                } else {
+                    self?.updateStatus("Tracking \(self?.connectedAnchors.count ?? 0) anchors")
+                }
+            }
         }
     }
     
@@ -329,40 +358,115 @@ class NavigatorViewController: UIViewController, NISessionDelegate {
             return
         }
         mpc?.sendData(data: encodedData, peers: [peer], mode: .reliable)
-        sharedTokenWithPeer = true
+    }
+    
+    private func startTrackingSessionIfNeeded() {
+        // Start tracking session if we have multiple anchors
+        guard connectedAnchors.count >= 2,
+              measurementTimer == nil else { return }
+        
+        // Fetch destinations for all connected anchors
+        var participants: [String: AnchorDestination] = [:]
+        
+        // Add navigator (no destination)
+        if let userId = UserSession.shared.userId {
+            DistanceErrorTracker.shared.registerDevice(userId, destination: nil)
+        }
+        
+        // Add anchors with their destinations
+        for anchor in connectedAnchors {
+            let components = anchor.displayName.components(separatedBy: "-")
+            if components.count >= 2 {
+                let anchorUserId = components[1]
+                
+                // Fetch destination for this anchor
+                FirebaseManager.shared.fetchUserDestination(userId: anchorUserId) { result in
+                    if case .success(let destStr) = result,
+                       let destString = destStr,
+                       let destination = AnchorDestination(rawValue: destString) {
+                        participants[anchorUserId] = destination
+                        DistanceErrorTracker.shared.registerDevice(anchorUserId, destination: destination)
+                        
+                        // Start session if we have enough participants
+                        if participants.count >= 2 {
+                            DistanceErrorTracker.shared.startSession(participants: participants)
+                        }
+                    }
+                }
+            }
+        }
+        
+        startMeasurementTimer()
+    }
+    
+    private func startMeasurementTimer() {
+        measurementTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+            self?.updateDistanceTracking()
+        }
+    }
+    
+    private func updateDistanceTracking() {
+        guard let userId = UserSession.shared.userId else { return }
+        
+        // Update distances for all connected anchors
+        for (peer, distance) in anchorDistances {
+            let components = peer.displayName.components(separatedBy: "-")
+            if components.count >= 2 {
+                DistanceErrorTracker.shared.updateDistance(from: userId, to: components[1], distance: distance)
+            }
+        }
     }
     
     // MARK: - NISessionDelegate
     func session(_ session: NISession, didUpdate nearbyObjects: [NINearbyObject]) {
-        guard let peerToken = peerDiscoveryToken else { return }
+        // Find which peer this session belongs to
+        guard let peer = sessions.first(where: { $0.value === session })?.key,
+              let peerToken = peerTokens[peer] else {
+            return
+        }
         
-        // Find the anchor object
+        // Find the anchor object for this peer
         guard let anchorObject = nearbyObjects.first(where: { $0.discoveryToken == peerToken }) else {
             return
         }
         
-        // Update visualization
-        let nextState = getDistanceDirectionState(from: anchorObject)
+        // Update distance for this anchor
         DispatchQueue.main.async { [weak self] in
-            self?.updateVisualization(from: self?.currentDistanceDirectionState ?? .unknown,
-                                     to: nextState,
-                                     with: anchorObject)
-            self?.currentDistanceDirectionState = nextState
+            self?.anchorDistances[peer] = anchorObject.distance
+            
+            // If this is the primary anchor, update visualization
+            if peer == self?.primaryAnchor {
+                let nextState = self?.getDistanceDirectionState(from: anchorObject) ?? .unknown
+                self?.updateVisualization(from: self?.currentDistanceDirectionState ?? .unknown,
+                                         to: nextState,
+                                         with: anchorObject)
+                self?.currentDistanceDirectionState = nextState
+            }
+            
+            // Update multi-anchor display if needed
+            self?.updateMultiAnchorDisplay()
         }
     }
     
     func session(_ session: NISession, didRemove nearbyObjects: [NINearbyObject], reason: NINearbyObject.RemovalReason) {
-        guard let peerToken = peerDiscoveryToken else { return }
+        // Find which peer this session belongs to
+        guard let peer = sessions.first(where: { $0.value === session })?.key,
+              let peerToken = peerTokens[peer] else {
+            return
+        }
         
         if nearbyObjects.contains(where: { $0.discoveryToken == peerToken }) {
-            currentDistanceDirectionState = .unknown
+            // Remove distance for this anchor
+            anchorDistances.removeValue(forKey: peer)
+            
+            if peer == primaryAnchor {
+                currentDistanceDirectionState = .unknown
+            }
             
             switch reason {
             case .peerEnded:
-                peerDiscoveryToken = nil
-                session.invalidate()
-                startNavigatorMode()
-                updateStatus("Anchor ended session")
+                // Handle in disconnected handler
+                break
             case .timeout:
                 if let config = session.configuration {
                     session.run(config)
@@ -510,8 +614,33 @@ class NavigatorViewController: UIViewController, NISessionDelegate {
     }
     
     private func cleanupSession() {
-        session?.invalidate()
+        measurementTimer?.invalidate()
+        measurementTimer = nil
+        
+        DistanceErrorTracker.shared.endSession()
+        
+        sessions.values.forEach { $0.invalidate() }
+        sessions.removeAll()
         mpc?.invalidate()
+    }
+    
+    private func updateMultiAnchorDisplay() {
+        // Update UI to show distances to all anchors
+        var statusText = "Tracking: "
+        var distanceTexts: [String] = []
+        
+        for (peer, distance) in anchorDistances {
+            let components = peer.displayName.components(separatedBy: "-")
+            if components.count >= 2 {
+                let anchorId = components[1]
+                distanceTexts.append("\(anchorId): \(String(format: "%.2fm", distance))")
+            }
+        }
+        
+        if !distanceTexts.isEmpty {
+            statusText += distanceTexts.joined(separator: ", ")
+            // You could update a secondary label here to show all distances
+        }
     }
     
     // MARK: - Actions

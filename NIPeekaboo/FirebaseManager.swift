@@ -16,6 +16,29 @@ enum UserRole: String {
     case navigator = "navigator"
 }
 
+enum AnchorDestination: String, CaseIterable {
+    case window = "window"
+    case meetingRoom = "meeting_room"
+    case kitchen = "kitchen"
+    
+    var displayName: String {
+        switch self {
+        case .window:
+            return "Window"
+        case .meetingRoom:
+            return "Meeting Room"
+        case .kitchen:
+            return "Kitchen"
+        }
+    }
+}
+
+struct AnchorData {
+    let id: String
+    let name: String
+    let destination: String?
+}
+
 class FirebaseManager {
     static let shared = FirebaseManager()
     
@@ -40,7 +63,7 @@ class FirebaseManager {
         }
     }
     
-    func signUp(email: String, password: String, displayName: String, role: UserRole, completion: @escaping (Result<String, Error>) -> Void) {
+    func signUp(email: String, password: String, displayName: String, role: UserRole, destination: String? = nil, completion: @escaping (Result<String, Error>) -> Void) {
         auth.createUser(withEmail: email, password: password) { [weak self] authResult, error in
             if let error = error {
                 completion(.failure(error))
@@ -53,7 +76,7 @@ class FirebaseManager {
             }
             
             // Create user document in Firestore
-            let userData: [String: Any] = [
+            var userData: [String: Any] = [
                 "email": email,
                 "displayName": displayName,
                 "role": role.rawValue,
@@ -61,6 +84,11 @@ class FirebaseManager {
                 "lastSeen": FieldValue.serverTimestamp(),
                 "createdAt": FieldValue.serverTimestamp()
             ]
+            
+            // Add destination for anchor users
+            if let destination = destination {
+                userData["destination"] = destination
+            }
             
             self?.db.collection("users").document(userId).setData(userData) { error in
                 if let error = error {
@@ -70,11 +98,16 @@ class FirebaseManager {
                 
                 // If user is an anchor, also add to anchors collection
                 if role == .anchor {
-                    let anchorData: [String: Any] = [
+                    var anchorData: [String: Any] = [
                         "displayName": displayName,
                         "isAvailable": true,
                         "connectedNavigators": []
                     ]
+                    
+                    // Add destination to anchor data
+                    if let destination = destination {
+                        anchorData["destination"] = destination
+                    }
                     self?.db.collection("anchors").document(userId).setData(anchorData) { error in
                         if let error = error {
                             completion(.failure(error))
@@ -169,6 +202,97 @@ class FirebaseManager {
             if let error = error {
                 print("Error updating presence: \(error)")
             }
+        }
+    }
+    
+    func fetchUserDestination(userId: String, completion: @escaping (Result<String?, Error>) -> Void) {
+        db.collection("users").document(userId).getDocument { document, error in
+            if let error = error {
+                completion(.failure(error))
+                return
+            }
+            
+            guard let document = document, document.exists else {
+                completion(.success(nil))
+                return
+            }
+            
+            let destination = document.data()?["destination"] as? String
+            completion(.success(destination))
+        }
+    }
+    
+    func fetchAllAnchorsWithDestinations(completion: @escaping (Result<[AnchorData], Error>) -> Void) {
+        db.collection("anchors").whereField("isAvailable", isEqualTo: true).getDocuments { snapshot, error in
+            if let error = error {
+                completion(.failure(error))
+                return
+            }
+            
+            guard let documents = snapshot?.documents else {
+                completion(.success([]))
+                return
+            }
+            
+            let anchors = documents.compactMap { doc -> AnchorData? in
+                guard let name = doc.data()["displayName"] as? String else { return nil }
+                let destination = doc.data()["destination"] as? String
+                return AnchorData(id: doc.documentID, name: name, destination: destination)
+            }
+            
+            completion(.success(anchors))
+        }
+    }
+    
+    // MARK: - Update Existing Anchor Destinations
+    func updateExistingAnchorDestinations() {
+        // Predefined mapping of emails to destinations
+        let destinationMappings: [(email: String, destination: String)] = [
+            ("subhavee1@gmail.com", "window"),
+            ("akshata@valuenex.com", "kitchen"),
+            ("elena@valuenex.com", "meeting_room")
+        ]
+        
+        print("Starting destination updates for all anchor accounts...")
+        
+        for mapping in destinationMappings {
+            // Find user by email
+            db.collection("users")
+                .whereField("email", isEqualTo: mapping.email)
+                .getDocuments { [weak self] snapshot, error in
+                    if let error = error {
+                        print("Error finding user \(mapping.email): \(error)")
+                        return
+                    }
+                    
+                    guard let documents = snapshot?.documents,
+                          let userDoc = documents.first else {
+                        print("User not found: \(mapping.email)")
+                        return
+                    }
+                    
+                    let userId = userDoc.documentID
+                    let batch = self?.db.batch()
+                    
+                    // Update user document
+                    if let userRef = self?.db.collection("users").document(userId) {
+                        batch?.updateData(["destination": mapping.destination], forDocument: userRef)
+                    }
+                    
+                    // Update anchor document
+                    if let anchorRef = self?.db.collection("anchors").document(userId) {
+                        batch?.updateData(["destination": mapping.destination], forDocument: anchorRef)
+                    }
+                    
+                    // Commit batch update
+                    batch?.commit { error in
+                        if let error = error {
+                            print("Error updating destinations for \(mapping.email): \(error)")
+                        } else {
+                            print("Successfully updated \(mapping.email) with destination: \(mapping.destination)")
+                        }
+                    }
+                }
         }
     }
 }
