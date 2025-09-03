@@ -132,6 +132,7 @@ class NavigatorViewController: UIViewController, NISessionDelegate {
     private var primaryAnchor: MCPeerID?
     private let nearbyDistanceThreshold: Float = 0.3
     private var measurementTimer: Timer?
+    private var batteryTimer: Timer?
     
     // MARK: - Navigation Properties
     var selectedAnchorId: String?
@@ -149,10 +150,17 @@ class NavigatorViewController: UIViewController, NISessionDelegate {
         setupUI()
         setupActions()
         startNavigatorMode()
+        startBatteryMonitoring()
+    }
+    
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        updatePresence(isOnline: true)
     }
     
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
+        updatePresence(isOnline: false)
         cleanupSession()
     }
     
@@ -613,9 +621,45 @@ class NavigatorViewController: UIViewController, NISessionDelegate {
         }
     }
     
+    // MARK: - Battery Monitoring
+    private func startBatteryMonitoring() {
+        UIDevice.current.isBatteryMonitoringEnabled = true
+        
+        // Update immediately
+        updateBatteryLevel()
+        
+        // Update every 30 seconds
+        batteryTimer = Timer.scheduledTimer(withTimeInterval: 30.0, repeats: true) { [weak self] _ in
+            self?.updateBatteryLevel()
+        }
+    }
+    
+    private func updateBatteryLevel() {
+        guard let userId = UserSession.shared.userId else { return }
+        let batteryLevel = UIDevice.current.batteryLevel
+        
+        // Only update if battery level is valid (>= 0)
+        if batteryLevel >= 0 {
+            FirebaseManager.shared.updateBatteryLevel(userId: userId, batteryLevel: batteryLevel)
+        }
+        
+        // Update QoD score based on connected anchors
+        let hasAllAnchors = connectedAnchors.count >= 3
+        FirebaseManager.shared.updateQoDScore(userId: userId, score: hasAllAnchors ? 90 : nil)
+    }
+    
+    private func updatePresence(isOnline: Bool) {
+        if let userId = UserSession.shared.userId {
+            FirebaseManager.shared.updateUserPresence(userId: userId, isOnline: isOnline)
+        }
+    }
+    
     private func cleanupSession() {
         measurementTimer?.invalidate()
         measurementTimer = nil
+        
+        batteryTimer?.invalidate()
+        batteryTimer = nil
         
         DistanceErrorTracker.shared.endSession()
         

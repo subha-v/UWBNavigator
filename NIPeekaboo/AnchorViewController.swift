@@ -48,6 +48,7 @@ class AnchorViewController: UIViewController {
     private var peerTokens: [MCPeerID: NIDiscoveryToken] = [:]
     private var connectedNavigators: [NavigatorInfo] = []
     private var connectedAnchors: [AnchorInfo] = []
+    private var batteryTimer: Timer?
     private var mpc: MPCSession?
     private var anchorDestination: AnchorDestination?
     private var measurementTimer: Timer?
@@ -93,6 +94,7 @@ class AnchorViewController: UIViewController {
         setupTableView()
         loadAnchorDestination()
         startAnchorMode()
+        startBatteryMonitoring()
         
         // One-time update for existing anchor accounts
         checkAndUpdateDestinations()
@@ -532,6 +534,39 @@ class AnchorViewController: UIViewController {
         }
     }
     
+    // MARK: - Battery Monitoring
+    private func startBatteryMonitoring() {
+        UIDevice.current.isBatteryMonitoringEnabled = true
+        
+        // Update immediately
+        updateBatteryLevel()
+        
+        // Update every 30 seconds
+        batteryTimer = Timer.scheduledTimer(withTimeInterval: 30.0, repeats: true) { [weak self] _ in
+            self?.updateBatteryLevel()
+        }
+    }
+    
+    private func updateBatteryLevel() {
+        guard let userId = UserSession.shared.userId else { return }
+        let batteryLevel = UIDevice.current.batteryLevel
+        
+        // Only update if battery level is valid (>= 0)
+        if batteryLevel >= 0 {
+            FirebaseManager.shared.updateBatteryLevel(userId: userId, batteryLevel: batteryLevel)
+        }
+        
+        // Update QoD score if tracking session is active
+        if measurementTimer != nil {
+            // QoD will be calculated from recent measurements
+            // For now, set to nil if not all anchors connected
+            let allAnchorsConnected = connectedAnchors.count >= 2 // Need at least 2 other anchors
+            FirebaseManager.shared.updateQoDScore(userId: userId, score: allAnchorsConnected ? 85 : nil)
+        } else {
+            FirebaseManager.shared.updateQoDScore(userId: userId, score: nil)
+        }
+    }
+    
     // MARK: - Actions
     @objc private func logoutTapped() {
         let alert = UIAlertController(title: "Logout", message: "Are you sure you want to logout?", preferredStyle: .alert)
@@ -546,6 +581,10 @@ class AnchorViewController: UIViewController {
         // Stop measurement timer
         measurementTimer?.invalidate()
         measurementTimer = nil
+        
+        // Stop battery timer
+        batteryTimer?.invalidate()
+        batteryTimer = nil
         
         // End tracking session
         DistanceErrorTracker.shared.endSession()

@@ -205,6 +205,36 @@ class FirebaseManager {
         }
     }
     
+    func updateBatteryLevel(userId: String, batteryLevel: Float) {
+        let data: [String: Any] = [
+            "battery": Int(batteryLevel * 100),
+            "lastActive": FieldValue.serverTimestamp()
+        ]
+        db.collection("users").document(userId).updateData(data) { error in
+            if let error = error {
+                print("Error updating battery level: \(error)")
+            }
+        }
+    }
+    
+    func updateQoDScore(userId: String, score: Int?) {
+        var data: [String: Any] = [
+            "lastActive": FieldValue.serverTimestamp()
+        ]
+        
+        if let score = score {
+            data["qodScore"] = score
+        } else {
+            data["qodScore"] = FieldValue.delete()
+        }
+        
+        db.collection("users").document(userId).updateData(data) { error in
+            if let error = error {
+                print("Error updating QoD score: \(error)")
+            }
+        }
+    }
+    
     func fetchUserDestination(userId: String, completion: @escaping (Result<String?, Error>) -> Void) {
         db.collection("users").document(userId).getDocument { document, error in
             if let error = error {
