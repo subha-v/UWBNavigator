@@ -1,6 +1,6 @@
 # UWBNavigator
 
-A real-time indoor navigation iOS app using Ultra-Wideband (UWB) technology and Apple's Nearby Interaction framework. Navigate to people or points of interest with centimeter-level precision using directional arrows and distance indicators.
+A comprehensive indoor navigation system using Ultra-Wideband (UWB) technology, featuring an iOS app with Apple's Nearby Interaction framework and a web-based monitoring dashboard. Navigate to people or points of interest with centimeter-level precision while monitoring system performance in real-time.
 
 ## 🎯 Features
 
@@ -20,14 +20,29 @@ A real-time indoor navigation iOS app using Ultra-Wideband (UWB) technology and 
 - Nearby Interaction framework for UWB ranging
 - Automatic session management and reconnection
 - Background mode support for continuous tracking
+- Real-time error tracking against ground truth distances
+- Battery monitoring and QoD (Quality of Data) scoring
+
+### Guardian Console (Web Dashboard)
+- **Real-time Monitoring**: View all active anchors and navigators
+- **Battery Tracking**: Monitor device battery levels
+- **QoD Scores**: Quality metrics for positioning accuracy
+- **Distance Measurements**: Live error tracking against ground truth
+- **Smart Contract Simulation**: View measurement history as transactions
 
 ## 📱 Requirements
 
+### iOS App
 - **Devices**: iPhone 11 or newer (requires U1 chip)
 - **iOS Version**: iOS 14.0 or later
 - **Xcode**: 14.0 or later
 - **Swift**: 5.0 or later
 - **Firebase Account**: For authentication and anchor discovery
+
+### Guardian Console
+- **Node.js**: 18.0 or later
+- **npm**: 8.0 or later
+- **Modern web browser**: Chrome, Firefox, Safari, or Edge
 
 ## 🚀 Installation
 
@@ -58,9 +73,26 @@ The following keys are already configured:
 - `NSBonjourServices`: Required for MultipeerConnectivity
 
 ### 5. Build and Run
+
+#### iOS App
 1. Open `NIPeekaboo.xcodeproj` in Xcode
 2. Select your development team in Signing & Capabilities
 3. Build and run on a physical device (UWB not available in simulator)
+
+#### Guardian Console
+1. Navigate to the guardian-console directory:
+   ```bash
+   cd guardian-console
+   ```
+2. Install dependencies:
+   ```bash
+   npm install
+   ```
+3. Start the development server:
+   ```bash
+   npm run dev
+   ```
+4. Open [http://localhost:3000](http://localhost:3000) in your browser
 
 ## 🎮 Usage
 
@@ -126,25 +158,30 @@ The following keys are already configured:
 - **UI Framework**: UIKit with programmatic constraints
 - **Navigation**: Custom ArrowView with Core Animation
 
-### Key Components
+### Project Structure
 
 ```
-NIPeekaboo/
-├── View Controllers/
+UWBNavigator/
+├── NIPeekaboo/                            # iOS Application
 │   ├── LoginViewController.swift          # Authentication
 │   ├── SignUpViewController.swift          # User registration
 │   ├── AnchorSelectionViewController.swift # Browse anchors
 │   ├── AnchorViewController.swift         # Anchor mode UI
-│   └── NavigatorViewController.swift      # Navigator mode UI
-├── Views/
-│   └── ArrowView.swift                    # Custom arrow visualization
-├── Networking/
+│   ├── NavigatorViewController.swift      # Navigator mode UI
+│   ├── ArrowView.swift                    # Custom arrow visualization
 │   ├── MPCSession.swift                   # MultipeerConnectivity wrapper
-│   └── FirebaseManager.swift              # Firebase operations
-├── Models/
+│   ├── FirebaseManager.swift              # Firebase operations
+│   ├── DistanceErrorTracker.swift        # Error tracking & metrics
 │   └── UserSession.swift                  # Session management
-└── Resources/
-    └── Info.plist                         # App configuration
+├── guardian-console/                       # Web Dashboard
+│   ├── app/                               # Next.js app directory
+│   │   └── page.tsx                       # Main dashboard
+│   ├── components/                        # UI components
+│   ├── hooks/                             # React hooks
+│   │   └── useFirebaseData.ts            # Real-time data hooks
+│   └── lib/                               # Utilities
+│       └── firebase.ts                    # Firebase config
+└── NIPeekaboo.xcodeproj                  # Xcode project
 ```
 
 ### Data Flow
