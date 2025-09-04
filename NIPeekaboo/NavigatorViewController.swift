@@ -732,7 +732,7 @@ class NavigatorViewController: UIViewController, NISessionDelegate {
         
         // Reset UI
         updateStatus("Disconnected")
-        updateDistance(nil)
+        updateVisualization(from: .unknown, to: .unknown, with: nil)
         
         // Clear API data
         updateAPIData()
