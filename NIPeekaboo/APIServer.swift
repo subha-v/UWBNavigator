@@ -23,7 +23,10 @@ class APIServer {
     private init() {}
     
     func start() {
-        guard !isRunning else { return }
+        guard !isRunning else { 
+            print("API Server already running")
+            return 
+        }
         
         // Enable battery monitoring
         UIDevice.current.isBatteryMonitoringEnabled = true
@@ -31,12 +34,27 @@ class APIServer {
         setupRoutes()
         
         do {
-            try server.start(8080, forceIPv4: true)
-            isRunning = true
-            print("API Server started on port 8080")
-            print("Device IP: \(getWiFiAddress() ?? "Unknown")")
-        } catch {
-            print("Failed to start API server: \(error)")
+            // Try different ports if 8080 fails
+            let ports = [8080, 8081, 8082, 8083]
+            var started = false
+            
+            for port in ports {
+                do {
+                    try server.start(UInt16(port), forceIPv4: true)
+                    isRunning = true
+                    started = true
+                    print("✅ API Server started on port \(port)")
+                    print("📱 Device IP: \(getWiFiAddress() ?? "Unknown")")
+                    print("🔗 Access at: http://\(getWiFiAddress() ?? "localhost"):\(port)/api/status")
+                    break
+                } catch {
+                    print("❌ Failed to start on port \(port): \(error)")
+                }
+            }
+            
+            if !started {
+                print("❌ API Server failed to start on any port")
+            }
         }
     }
     
