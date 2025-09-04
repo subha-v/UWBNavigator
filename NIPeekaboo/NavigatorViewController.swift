@@ -302,31 +302,44 @@ class NavigatorViewController: UIViewController, NISessionDelegate {
     
     // MARK: - Anchor Connection Management
     private func handleAnchorConnected(_ peer: MCPeerID) {
-        // Accept connection from any anchor for multi-anchor tracking
         DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            
+            // Extract anchor ID from peer display name (format: "anchor-{userId}")
+            let peerAnchorId = peer.displayName.replacingOccurrences(of: "anchor-", with: "")
+            
+            // Only accept connection from the selected anchor
+            if let selectedId = self.selectedAnchorId {
+                if peerAnchorId != selectedId {
+                    print("Ignoring connection from non-selected anchor: \(peer.displayName)")
+                    // Reject this connection as it's not the one we want
+                    return
+                }
+            }
+            
+            // Check if we already have a session for this peer
+            if self.sessions[peer] != nil {
+                print("Session already exists for peer: \(peer.displayName)")
+                return
+            }
+            
             // Create new NISession for this anchor
             let session = NISession()
             session.delegate = self
-            self?.sessions[peer] = session
+            self.sessions[peer] = session
             
-            // Check if this is the primary selected anchor
-            if let anchorId = self?.selectedAnchorId,
-               peer.displayName == "anchor-\(anchorId)" {
-                self?.primaryAnchor = peer
-                self?.updateStatus("Connected to primary anchor")
-            } else {
-                self?.updateStatus("Connected to \(self?.connectedAnchors.count ?? 0) anchors")
-            }
-            
-            self?.connectedAnchors.append(peer)
+            // This is our primary selected anchor
+            self.primaryAnchor = peer
+            self.connectedAnchors.append(peer)
+            self.updateStatus("Connected to \(self.selectedAnchorName ?? "anchor")")
             
             // Share discovery token
             if let discoveryToken = session.discoveryToken {
-                self?.shareDiscoveryToken(discoveryToken, with: peer)
+                self.shareDiscoveryToken(discoveryToken, with: peer)
             }
             
             // Start tracking session if needed
-            self?.startTrackingSessionIfNeeded()
+            self.startTrackingSessionIfNeeded()
         }
     }
     
@@ -368,17 +381,27 @@ class NavigatorViewController: UIViewController, NISessionDelegate {
         }
         
         DispatchQueue.main.async { [weak self] in
-            self?.peerTokens[peer] = discoveryToken
+            guard let self = self else { return }
+            
+            // Only accept tokens from our selected anchor
+            let peerAnchorId = peer.displayName.replacingOccurrences(of: "anchor-", with: "")
+            if let selectedId = self.selectedAnchorId, peerAnchorId != selectedId {
+                print("Ignoring discovery token from non-selected anchor: \(peer.displayName)")
+                return
+            }
+            
+            // Store the token for this peer
+            self.peerTokens[peer] = discoveryToken
             
             // Start tracking with this anchor
-            if let session = self?.sessions[peer] {
+            if let session = self.sessions[peer] {
                 let config = NINearbyPeerConfiguration(peerToken: discoveryToken)
                 session.run(config)
                 
-                if peer == self?.primaryAnchor {
-                    self?.updateStatus("Tracking primary anchor")
+                if peer == self.primaryAnchor {
+                    self.updateStatus("Tracking \(self.selectedAnchorName ?? "anchor")")
                 } else {
-                    self?.updateStatus("Tracking \(self?.connectedAnchors.count ?? 0) anchors")
+                    self.updateStatus("Tracking \(self.connectedAnchors.count) anchors")
                 }
             }
         }
@@ -723,8 +746,11 @@ class NavigatorViewController: UIViewController, NISessionDelegate {
         // Reset anchor tracking state
         connectedAnchors.removeAll()
         anchorDistances.removeAll()
-        selectedAnchorId = nil
-        selectedAnchorName = nil
+        peerTokens.removeAll()
+        primaryAnchor = nil
+        currentDistanceDirectionState = .unknown
+        // Important: Do NOT clear selectedAnchorId and selectedAnchorName here
+        // They are set by the AnchorSelectionViewController and should persist
         
         // Invalidate MPC session
         mpc?.invalidate()

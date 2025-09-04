@@ -157,7 +157,8 @@ class FirebaseManager {
     }
     
     func fetchAvailableAnchors(completion: @escaping (Result<[(id: String, name: String)], Error>) -> Void) {
-        db.collection("anchors").whereField("isAvailable", isEqualTo: true).getDocuments { snapshot, error in
+        // First get available anchors
+        db.collection("anchors").whereField("isAvailable", isEqualTo: true).getDocuments { [weak self] snapshot, error in
             if let error = error {
                 completion(.failure(error))
                 return
@@ -168,12 +169,35 @@ class FirebaseManager {
                 return
             }
             
-            let anchors = documents.compactMap { doc -> (id: String, name: String)? in
-                guard let name = doc.data()["displayName"] as? String else { return nil }
-                return (id: doc.documentID, name: name)
+            // Now check which ones are actually online by checking users collection
+            var onlineAnchors: [(id: String, name: String)] = []
+            let group = DispatchGroup()
+            
+            for doc in documents {
+                guard let name = doc.data()["displayName"] as? String else { continue }
+                let anchorId = doc.documentID
+                
+                group.enter()
+                self?.db.collection("users").document(anchorId).getDocument { userDoc, error in
+                    defer { group.leave() }
+                    
+                    if let userData = userDoc?.data(),
+                       let isOnline = userData["isOnline"] as? Bool,
+                       isOnline {
+                        // Check if last seen is recent (within 5 minutes)
+                        if let lastSeen = userData["lastSeen"] as? Timestamp {
+                            let timeSinceLastSeen = Date().timeIntervalSince(lastSeen.dateValue())
+                            if timeSinceLastSeen < 300 { // 5 minutes
+                                onlineAnchors.append((id: anchorId, name: name))
+                            }
+                        }
+                    }
+                }
             }
             
-            completion(.success(anchors))
+            group.notify(queue: .main) {
+                completion(.success(onlineAnchors))
+            }
         }
     }
     
