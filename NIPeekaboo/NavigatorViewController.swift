@@ -152,8 +152,10 @@ class NavigatorViewController: UIViewController, NISessionDelegate {
         startNavigatorMode()
         startBatteryMonitoring()
         
-        // Initialize API data
-        updateAPIData()
+        // Only initialize API data if actually in navigator role
+        if UserSession.shared.userRole == .navigator {
+            updateAPIData()
+        }
     }
     
     override func viewWillAppear(_ animated: Bool) {
@@ -165,6 +167,8 @@ class NavigatorViewController: UIViewController, NISessionDelegate {
         super.viewWillDisappear(animated)
         updatePresence(isOnline: false)
         cleanupSession()
+        // Clear API data when leaving navigator mode
+        APIServer.shared.clearNavigatorData()
     }
     
     // MARK: - Setup

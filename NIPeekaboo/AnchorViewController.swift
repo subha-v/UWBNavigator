@@ -99,8 +99,10 @@ class AnchorViewController: UIViewController {
         // One-time update for existing anchor accounts
         checkAndUpdateDestinations()
         
-        // Initialize API data
-        updateAPIData()
+        // Only initialize API data if actually in anchor role
+        if UserSession.shared.userRole == .anchor {
+            updateAPIData()
+        }
     }
     
     override func viewWillAppear(_ animated: Bool) {
@@ -111,6 +113,8 @@ class AnchorViewController: UIViewController {
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
         updatePresence(isOnline: false)
+        // Clear API data when leaving anchor mode
+        APIServer.shared.clearAnchorData()
     }
     
     // MARK: - Setup
