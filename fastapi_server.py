@@ -53,6 +53,16 @@ class IOSDeviceListener(ServiceListener):
                 
                 # Extract device info
                 device_id = txt_data.get('deviceId', name)
+                
+                # Check if this is an update to an existing device (same deviceId but different service name)
+                existing_device = discovered_devices.get(device_id)
+                if existing_device and existing_device.get('service_name') != name:
+                    # Remove old service name entry if it exists
+                    for did, dev in list(discovered_devices.items()):
+                        if dev.get('service_name') == existing_device.get('service_name') and did != device_id:
+                            del discovered_devices[did]
+                            logger.debug(f"Removed duplicate entry for {did}")
+                
                 device_info = {
                     'id': device_id,
                     'name': txt_data.get('deviceName', 'Unknown Device'),
@@ -66,9 +76,14 @@ class IOSDeviceListener(ServiceListener):
                     'txt_data': txt_data
                 }
                 
-                # Store discovered device
+                # Store discovered device (will overwrite if exists)
                 discovered_devices[device_id] = device_info
-                logger.info(f"✅ Discovered device: {device_info['email']} ({device_info['role']}) at {ip}:{port}")
+                
+                # Log appropriately
+                if existing_device and (existing_device.get('email') != device_info['email'] or existing_device.get('role') != device_info['role']):
+                    logger.info(f"📡 Updated device: {device_info['email']} ({device_info['role']}) at {ip}:{port}")
+                else:
+                    logger.info(f"✅ Discovered device: {device_info['email']} ({device_info['role']}) at {ip}:{port}")
                 
                 # Trigger immediate data fetch (only in async context)
                 try:

@@ -49,6 +49,9 @@ class UserSession {
         self.userId = userId
         self.userRole = role
         self.displayName = displayName
+        
+        // Update Bonjour service to broadcast correct role and email
+        APIServer.shared.updateBonjourService()
     }
     
     func clearSession() {

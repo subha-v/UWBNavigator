@@ -75,6 +75,22 @@ class APIServer: NSObject {
         print("API Server stopped")
     }
     
+    // Update Bonjour service after login to broadcast correct role and email
+    func updateBonjourService() {
+        guard isRunning else { return }
+        
+        // Get current port
+        let currentPort = server.port ?? 8080
+        
+        // Stop existing Bonjour service
+        netService?.stop()
+        netService = nil
+        
+        // Restart with updated user info
+        startBonjourService(port: Int(currentPort))
+        print("📡 Updated Bonjour service with role: \(UserSession.shared.userRole?.rawValue ?? "unknown"), email: \(UserSession.shared.userId ?? "unknown")")
+    }
+    
     private func setupRoutes() {
         // CORS headers for all responses
         let corsHeaders: [String: String] = [
