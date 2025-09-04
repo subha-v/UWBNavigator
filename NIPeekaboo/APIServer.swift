@@ -55,18 +55,41 @@ class APIServer {
             "Content-Type": "application/json"
         ]
         
-        // Handle preflight requests
-        server["/api/:path"] = { request in
+        // GET /api/status - Returns server status and device info
+        server["/api/status"] = { request in
+            // Handle OPTIONS for CORS preflight
             if request.method == "OPTIONS" {
                 return HttpResponse.raw(200, "OK", corsHeaders) { writer in
                     try writer.write([UInt8]())
                 }
             }
-            return HttpResponse.notFound
+            
+            let status: [String: Any] = [
+                "status": "online",
+                "deviceName": UIDevice.current.name,
+                "deviceModel": UIDevice.current.model,
+                "systemVersion": UIDevice.current.systemVersion,
+                "batteryLevel": Int(UIDevice.current.batteryLevel * 100),
+                "timestamp": ISO8601DateFormatter().string(from: Date())
+            ]
+            
+            let jsonData = try? JSONSerialization.data(withJSONObject: status, options: .prettyPrinted)
+            let jsonString = String(data: jsonData ?? Data(), encoding: .utf8) ?? "{}"
+            
+            return HttpResponse.raw(200, "OK", corsHeaders) { writer in
+                try writer.write([UInt8](jsonString.utf8))
+            }
         }
         
         // GET /api/anchors - Returns anchor devices data
         server["/api/anchors"] = { [weak self] request in
+            // Handle OPTIONS for CORS preflight
+            if request.method == "OPTIONS" {
+                return HttpResponse.raw(200, "OK", corsHeaders) { writer in
+                    try writer.write([UInt8]())
+                }
+            }
+            
             guard let self = self else { return HttpResponse.internalServerError }
             
             let anchors = self.getAnchorsData()
@@ -80,6 +103,13 @@ class APIServer {
         
         // GET /api/navigators - Returns navigator devices data
         server["/api/navigators"] = { [weak self] request in
+            // Handle OPTIONS for CORS preflight
+            if request.method == "OPTIONS" {
+                return HttpResponse.raw(200, "OK", corsHeaders) { writer in
+                    try writer.write([UInt8]())
+                }
+            }
+            
             guard let self = self else { return HttpResponse.internalServerError }
             
             let navigators = self.getNavigatorsData()
@@ -93,28 +123,16 @@ class APIServer {
         
         // GET /api/distances - Returns current distance measurements
         server["/api/distances"] = { [weak self] request in
+            // Handle OPTIONS for CORS preflight
+            if request.method == "OPTIONS" {
+                return HttpResponse.raw(200, "OK", corsHeaders) { writer in
+                    try writer.write([UInt8]())
+                }
+            }
+            
             guard let self = self else { return HttpResponse.internalServerError }
             
             let jsonData = try? JSONSerialization.data(withJSONObject: self.distanceData, options: .prettyPrinted)
-            let jsonString = String(data: jsonData ?? Data(), encoding: .utf8) ?? "{}"
-            
-            return HttpResponse.raw(200, "OK", corsHeaders) { writer in
-                try writer.write([UInt8](jsonString.utf8))
-            }
-        }
-        
-        // GET /api/status - Returns server status and device info
-        server["/api/status"] = { request in
-            let status: [String: Any] = [
-                "status": "online",
-                "deviceName": UIDevice.current.name,
-                "deviceModel": UIDevice.current.model,
-                "systemVersion": UIDevice.current.systemVersion,
-                "batteryLevel": Int(UIDevice.current.batteryLevel * 100),
-                "timestamp": ISO8601DateFormatter().string(from: Date())
-            ]
-            
-            let jsonData = try? JSONSerialization.data(withJSONObject: status, options: .prettyPrinted)
             let jsonString = String(data: jsonData ?? Data(), encoding: .utf8) ?? "{}"
             
             return HttpResponse.raw(200, "OK", corsHeaders) { writer in
@@ -158,7 +176,7 @@ class APIServer {
             "battery": Int(UIDevice.current.batteryLevel * 100),
             "status": "idle",
             "connectedAnchors": 0,
-            "distances": [:]
+            "distances": [:] as [String: Any]
         ]]
     }
     
@@ -212,4 +230,3 @@ class APIServer {
         return address
     }
 }
-

@@ -151,6 +151,9 @@ class NavigatorViewController: UIViewController, NISessionDelegate {
         setupActions()
         startNavigatorMode()
         startBatteryMonitoring()
+        
+        // Initialize API data
+        updateAPIData()
     }
     
     override func viewWillAppear(_ animated: Bool) {

@@ -98,6 +98,9 @@ class AnchorViewController: UIViewController {
         
         // One-time update for existing anchor accounts
         checkAndUpdateDestinations()
+        
+        // Initialize API data
+        updateAPIData()
     }
     
     override func viewWillAppear(_ animated: Bool) {
