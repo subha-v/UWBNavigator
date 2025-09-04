@@ -166,9 +166,19 @@ class NavigatorViewController: UIViewController, NISessionDelegate {
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
         updatePresence(isOnline: false)
+        
+        // Perform thorough cleanup when leaving this view
         cleanupSession()
+        
         // Clear API data when leaving navigator mode
         APIServer.shared.clearNavigatorData()
+    }
+    
+    deinit {
+        // Ensure cleanup happens even if view lifecycle methods aren't called properly
+        cleanupSession()
+        APIServer.shared.clearNavigatorData()
+        print("NavigatorViewController deallocated")
     }
     
     // MARK: - Setup
@@ -261,27 +271,33 @@ class NavigatorViewController: UIViewController, NISessionDelegate {
     
     // MARK: - Navigator Mode
     private func startNavigatorMode() {
-        // Initialize MultipeerConnectivity with navigator role - connect to multiple anchors
-        #if targetEnvironment(simulator)
-        mpc = MPCSession(service: "nisample", identity: "navigator-simulator", maxPeers: 10)
-        #else
-        mpc = MPCSession(service: "nisample", identity: "navigator-\(UserSession.shared.userId ?? "unknown")", maxPeers: 10)
-        #endif
-        
-        mpc?.peerConnectedHandler = { [weak self] peer in
-            self?.handleAnchorConnected(peer)
+        // Add a small delay to ensure any previous MPC sessions are fully terminated
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+            guard let self = self else { return }
+            
+            // Initialize MultipeerConnectivity with navigator role - connect to multiple anchors
+            #if targetEnvironment(simulator)
+            self.mpc = MPCSession(service: "nisample", identity: "navigator-simulator", maxPeers: 10)
+            #else
+            let uniqueId = "navigator-\(UserSession.shared.userId ?? "unknown")-\(Date().timeIntervalSince1970)"
+            self.mpc = MPCSession(service: "nisample", identity: uniqueId, maxPeers: 10)
+            #endif
+            
+            self.mpc?.peerConnectedHandler = { [weak self] peer in
+                self?.handleAnchorConnected(peer)
+            }
+            
+            self.mpc?.peerDataHandler = { [weak self] data, peer in
+                self?.handleDataReceived(data: data, from: peer)
+            }
+            
+            self.mpc?.peerDisconnectedHandler = { [weak self] peer in
+                self?.handleAnchorDisconnected(peer)
+            }
+            
+            self.mpc?.start()
+            self.updateStatus("Searching for anchor...")
         }
-        
-        mpc?.peerDataHandler = { [weak self] data, peer in
-            self?.handleDataReceived(data: data, from: peer)
-        }
-        
-        mpc?.peerDisconnectedHandler = { [weak self] peer in
-            self?.handleAnchorDisconnected(peer)
-        }
-        
-        mpc?.start()
-        updateStatus("Searching for anchor...")
     }
     
     // MARK: - Anchor Connection Management
@@ -700,9 +716,26 @@ class NavigatorViewController: UIViewController, NISessionDelegate {
         
         DistanceErrorTracker.shared.endSession()
         
+        // Clear all NI sessions
         sessions.values.forEach { $0.invalidate() }
         sessions.removeAll()
+        
+        // Reset anchor tracking state
+        connectedAnchors.removeAll()
+        anchorDistances.removeAll()
+        selectedAnchorId = nil
+        selectedAnchorName = nil
+        
+        // Invalidate MPC session
         mpc?.invalidate()
+        mpc = nil
+        
+        // Reset UI
+        updateStatus("Disconnected")
+        updateDistance(nil)
+        
+        // Clear API data
+        updateAPIData()
     }
     
     private func updateMultiAnchorDisplay() {
