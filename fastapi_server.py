@@ -70,8 +70,13 @@ class IOSDeviceListener(ServiceListener):
                 discovered_devices[device_id] = device_info
                 logger.info(f"✅ Discovered device: {device_info['email']} ({device_info['role']}) at {ip}:{port}")
                 
-                # Trigger immediate data fetch
-                asyncio.create_task(fetch_device_data(device_id))
+                # Trigger immediate data fetch (only in async context)
+                try:
+                    loop = asyncio.get_running_loop()
+                    loop.create_task(fetch_device_data(device_id))
+                except RuntimeError:
+                    # No running event loop, will be fetched in periodic fetch
+                    logger.debug(f"Device {device_id} will be fetched in next periodic cycle")
                 
         except Exception as e:
             logger.error(f"Error adding service {name}: {e}")
@@ -290,10 +295,10 @@ async def lifespan(app: FastAPI):
     listener = IOSDeviceListener()
     service_browser = ServiceBrowser(
         zeroconf_instance,
-        ["_uwbnav-http._tcp.local.", "_http._tcp.local."],
+        ["_uwbnav-http._tcp.local."],  # Only listen for UWB Navigator devices
         listener
     )
-    logger.info("📡 Started Bonjour service discovery")
+    logger.info("📡 Started Bonjour service discovery for UWB Navigator devices")
     
     # Start background tasks
     asyncio.create_task(periodic_fetch())
@@ -410,6 +415,53 @@ async def refresh_discovery():
         "status": "refreshed",
         "devices_checked": len(tasks),
         "timestamp": datetime.now().isoformat()
+    }
+
+@app.post("/api/register")
+async def register_device(ip: str, port: int = 8080):
+    """Manually register a device by IP address (fallback for Bonjour issues)"""
+    try:
+        # Test connection first
+        async with httpx.AsyncClient(timeout=2.0) as client:
+            response = await client.get(f"http://{ip}:{port}/api/status")
+            if response.status_code == 200:
+                status_data = response.json()
+                
+                # Create device entry
+                device_id = status_data.get('email', f"manual-{ip}")
+                device_info = {
+                    'id': device_id,
+                    'name': status_data.get('deviceName', 'Unknown Device'),
+                    'email': status_data.get('email', 'unknown'),
+                    'role': status_data.get('role', 'unknown'),
+                    'ip': ip,
+                    'port': port,
+                    'service_name': f"manual-{ip}",
+                    'last_seen': datetime.now().isoformat(),
+                    'status': 'discovered',
+                    'manual': True  # Mark as manually registered
+                }
+                
+                discovered_devices[device_id] = device_info
+                logger.info(f"✅ Manually registered device: {device_info['email']} ({device_info['role']}) at {ip}:{port}")
+                
+                # Fetch data immediately
+                await fetch_device_data(device_id)
+                
+                return {
+                    "status": "success",
+                    "device": device_info,
+                    "message": f"Device registered successfully"
+                }
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": f"Failed to register device: {str(e)}"
+        }
+    
+    return {
+        "status": "error",
+        "message": "Could not connect to device"
     }
 
 if __name__ == "__main__":

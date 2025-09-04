@@ -9,7 +9,7 @@ import Foundation
 import UIKit
 import Swifter
 
-class APIServer {
+class APIServer: NSObject {
     static let shared = APIServer()
     
     private let server = HttpServer()
@@ -22,7 +22,9 @@ class APIServer {
     var navigatorData: [[String: Any]] = []
     var distanceData: [String: Any] = [:]
     
-    private init() {}
+    private override init() {
+        super.init()
+    }
     
     func start() {
         guard !isRunning else { 
