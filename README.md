@@ -43,6 +43,12 @@ pod install
 ```
 If using Swift Package Manager, packages will be resolved automatically when opening the project.
 
+Additionally, add the Swifter HTTP server package:
+1. Open `NIPeekaboo.xcodeproj` in Xcode
+2. Go to File → Add Package Dependencies
+3. Add: `https://github.com/httpswift/swifter`
+4. Select version: Up to Next Major Version (2.0.0)
+
 ### 3. Firebase Setup
 1. Create a new Firebase project at [Firebase Console](https://console.firebase.google.com)
 2. Add an iOS app with your bundle identifier
@@ -117,6 +123,69 @@ The following keys are already configured:
   - 🟢 Green: Actively tracking
   - 🔴 Red: Disconnected
 
+## 🌐 Web Dashboard Integration
+
+The app includes an HTTP API server for real-time web dashboard integration:
+
+### API Server
+- **Port**: 8080
+- **Auto-starts**: When app launches
+- **Protocol**: HTTP with CORS enabled
+
+### Available Endpoints
+
+#### GET /api/status
+Returns device status and information:
+```json
+{
+  "status": "online",
+  "deviceName": "iPhone 14 Pro",
+  "batteryLevel": 85,
+  "timestamp": "2025-01-04T12:00:00Z"
+}
+```
+
+#### GET /api/anchors
+Returns data from anchor devices:
+```json
+[{
+  "id": "user-unique-id",
+  "name": "Device Name", 
+  "destination": "Location Name",
+  "battery": 92,
+  "status": "connected",
+  "connectedNavigators": 3,
+  "measuredDistance": 1.5,
+  "distanceError": 0.05
+}]
+```
+
+#### GET /api/navigators
+Returns data from navigator devices:
+```json
+[{
+  "id": "user-unique-id",
+  "name": "Device Name",
+  "targetAnchor": "anchor-name",
+  "battery": 85,
+  "status": "active",
+  "connectedAnchors": 2,
+  "distances": {
+    "anchor1": 1.5,
+    "anchor2": 2.3
+  }
+}]
+```
+
+#### GET /api/distances
+Returns current distance measurements between devices.
+
+### Connecting Web Dashboard
+1. Find iPhone's IP: Settings → Wi-Fi → (i) icon → IP Address
+2. Configure dashboard with: `http://[iPhone-IP]:8080`
+3. Ensure iPhone and computer are on same network
+4. API updates automatically as tracking data changes
+
 ## 🏗 Architecture
 
 ### Technology Stack
@@ -125,6 +194,7 @@ The following keys are already configured:
 - **Backend**: Firebase (Auth + Realtime Database)
 - **UI Framework**: UIKit with programmatic constraints
 - **Navigation**: Custom ArrowView with Core Animation
+- **API Server**: Swifter HTTP server for web integration
 
 ### Key Components
 
@@ -140,6 +210,7 @@ NIPeekaboo/
 │   └── ArrowView.swift                    # Custom arrow visualization
 ├── Networking/
 │   ├── MPCSession.swift                   # MultipeerConnectivity wrapper
+│   ├── APIServer.swift                    # HTTP server for web dashboard
 │   └── FirebaseManager.swift              # Firebase operations
 ├── Models/
 │   └── UserSession.swift                  # Session management

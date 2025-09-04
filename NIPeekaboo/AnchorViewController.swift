@@ -600,7 +600,48 @@ extension AnchorViewController: NISessionDelegate {
                 // Update table view cell
                 self?.tableView.reloadRows(at: [IndexPath(row: index, section: 0)], with: .none)
             }
+            
+            // Update API server with current data
+            self?.updateAPIData()
         }
+    }
+    
+    // MARK: - API Data Update
+    private func updateAPIData() {
+        // Get current distance measurements for error tracking
+        var measuredDistance: Float?
+        var groundTruthDistance: Float?
+        var distanceError: Float?
+        
+        // If we have distance data, calculate error
+        if let firstNavigator = connectedNavigators.first,
+           let distance = firstNavigator.distance {
+            measuredDistance = distance
+            
+            // Get ground truth based on anchor destination
+            if anchorDestination != nil {
+                // This would need to be calculated based on actual ground truth data
+                // For now, using placeholder values
+                groundTruthDistance = nil  // Would come from DistanceErrorTracker
+                if let groundTruth = groundTruthDistance {
+                    distanceError = measuredDistance! - groundTruth
+                }
+            }
+        }
+        
+        let anchorData = [[
+            "id": UserSession.shared.userId ?? "unknown",
+            "name": UserSession.shared.displayName ?? UIDevice.current.name,
+            "destination": anchorDestination?.rawValue ?? "unknown",
+            "battery": Int(UIDevice.current.batteryLevel * 100),
+            "status": connectedNavigators.isEmpty ? "disconnected" : "connected",
+            "connectedNavigators": connectedNavigators.count,
+            "measuredDistance": measuredDistance as Any,
+            "groundTruthDistance": groundTruthDistance as Any,
+            "distanceError": distanceError as Any
+        ] as [String : Any]]
+        
+        APIServer.shared.updateAnchorData(anchorData)
     }
     
     func session(_ session: NISession, didRemove nearbyObjects: [NINearbyObject], reason: NINearbyObject.RemovalReason) {
