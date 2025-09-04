@@ -18,6 +18,12 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         // Initialize Firebase
         FirebaseApp.configure()
         
+        // Enable battery monitoring
+        UIDevice.current.isBatteryMonitoringEnabled = true
+        
+        // Start API server
+        APIServer.shared.start()
+        
         // Check for NearbyInteraction support
         if !NISession.isSupported {
             print("unsupported device")

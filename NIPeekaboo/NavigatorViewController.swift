@@ -453,7 +453,31 @@ class NavigatorViewController: UIViewController, NISessionDelegate {
             
             // Update multi-anchor display if needed
             self?.updateMultiAnchorDisplay()
+            
+            // Update API server with current data
+            self?.updateAPIData()
         }
+    }
+    
+    // MARK: - API Data Update
+    private func updateAPIData() {
+        var distances: [String: Float] = [:]
+        for (peer, distance) in anchorDistances {
+            let anchorName = peer.displayName.replacingOccurrences(of: "anchor-", with: "")
+            distances[anchorName] = distance
+        }
+        
+        let navigatorData = [[
+            "id": UserSession.shared.userId ?? "unknown",
+            "name": UserSession.shared.displayName ?? UIDevice.current.name,
+            "targetAnchor": selectedAnchorName ?? "none",
+            "battery": Int(UIDevice.current.batteryLevel * 100),
+            "status": connectedAnchors.isEmpty ? "idle" : "active",
+            "connectedAnchors": connectedAnchors.count,
+            "distances": distances
+        ] as [String : Any]]
+        
+        APIServer.shared.updateNavigatorData(navigatorData)
     }
     
     func session(_ session: NISession, didRemove nearbyObjects: [NINearbyObject], reason: NINearbyObject.RemovalReason) {
