@@ -13,6 +13,8 @@ class APIServer {
     static let shared = APIServer()
     
     private let server = HttpServer()
+    private var netService: NetService?
+    private var currentPort: Int = 0
     private var isRunning = false
     
     // Data sources (will be updated by view controllers)
@@ -43,9 +45,14 @@ class APIServer {
                     try server.start(UInt16(port), forceIPv4: true)
                     isRunning = true
                     started = true
+                    currentPort = port
                     print("✅ API Server started on port \(port)")
                     print("📱 Device IP: \(getWiFiAddress() ?? "Unknown")")
                     print("🔗 Access at: http://\(getWiFiAddress() ?? "localhost"):\(port)/api/status")
+                    
+                    // Start Bonjour service broadcasting
+                    startBonjourService(port: port)
+                    
                     break
                 } catch {
                     print("❌ Failed to start on port \(port): \(error)")
@@ -60,6 +67,8 @@ class APIServer {
     
     func stop() {
         server.stop()
+        netService?.stop()
+        netService = nil
         isRunning = false
         print("API Server stopped")
     }
@@ -88,6 +97,9 @@ class APIServer {
                 "deviceModel": UIDevice.current.model,
                 "systemVersion": UIDevice.current.systemVersion,
                 "batteryLevel": Int(UIDevice.current.batteryLevel * 100),
+                "email": UserSession.shared.userId ?? "unknown",
+                "role": UserSession.shared.userRole?.rawValue ?? "unknown",
+                "port": self.currentPort,
                 "timestamp": ISO8601DateFormatter().string(from: Date())
             ]
             
@@ -231,5 +243,69 @@ class APIServer {
         
         freeifaddrs(ifaddr)
         return address
+    }
+    
+    // MARK: - Bonjour Service Broadcasting
+    
+    private func startBonjourService(port: Int) {
+        // Stop any existing service
+        netService?.stop()
+        
+        // Create service name with user email or device name
+        let email = UserSession.shared.userId ?? "unknown"
+        let deviceName = UIDevice.current.name.replacingOccurrences(of: " ", with: "-")
+        let serviceName = "\(email)-\(deviceName)".replacingOccurrences(of: "@", with: "-at-")
+            .replacingOccurrences(of: ".", with: "-")
+        
+        // Create and configure the NetService
+        netService = NetService(
+            domain: "local.",
+            type: "_uwbnav-http._tcp.",
+            name: serviceName,
+            port: Int32(port)
+        )
+        
+        // Add TXT record with device metadata
+        let txtData = createTXTRecord()
+        netService?.setTXTRecord(txtData)
+        
+        // Set delegate and publish
+        netService?.delegate = self
+        netService?.publish()
+        
+        print("📡 Broadcasting Bonjour service: \(serviceName) on port \(port)")
+    }
+    
+    private func createTXTRecord() -> Data {
+        var txtRecord = [String: Data]()
+        
+        // Add device metadata
+        txtRecord["email"] = (UserSession.shared.userId ?? "unknown").data(using: .utf8)
+        txtRecord["deviceName"] = UIDevice.current.name.data(using: .utf8)
+        txtRecord["deviceId"] = (UIDevice.current.identifierForVendor?.uuidString ?? "unknown").data(using: .utf8)
+        txtRecord["role"] = (UserSession.shared.userRole?.rawValue ?? "unknown").data(using: .utf8)
+        txtRecord["version"] = "1.0".data(using: .utf8)
+        
+        return NetService.data(fromTXTRecord: txtRecord)
+    }
+}
+
+// MARK: - NetServiceDelegate
+
+extension APIServer: NetServiceDelegate {
+    func netServiceDidPublish(_ sender: NetService) {
+        print("✅ Bonjour service published successfully: \(sender.name)")
+        print("📡 Service type: \(sender.type)")
+        print("📡 Port: \(sender.port)")
+    }
+    
+    func netService(_ sender: NetService, didNotPublish errorDict: [String : NSNumber]) {
+        print("❌ Failed to publish Bonjour service")
+        if let errorCode = errorDict[NetService.errorCode] {
+            print("   Error code: \(errorCode)")
+        }
+        if let errorDomain = errorDict[NetService.errorDomain] {
+            print("   Error domain: \(errorDomain)")
+        }
     }
 }

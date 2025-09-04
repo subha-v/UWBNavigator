@@ -1,0 +1,17 @@
+# UWB Navigator FastAPI Server Requirements
+# Python 3.8+
+
+# Core dependencies
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+httpx==0.25.1
+zeroconf==0.119.0
+
+# WebSocket support
+websockets==12.0
+
+# Async support
+asyncio-mqtt==0.16.2
+
+# Development dependencies (optional)
+python-dotenv==1.0.0
