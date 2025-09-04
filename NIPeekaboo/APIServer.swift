@@ -144,40 +144,13 @@ class APIServer {
     // MARK: - Data Collection Methods
     
     private func getAnchorsData() -> [[String: Any]] {
-        // This will be updated by AnchorViewController
-        // For now, return stored data or empty array
-        if !anchorData.isEmpty {
-            return anchorData
-        }
-        
-        // Return mock data if no real data available
-        return [[
-            "id": UserSession.shared.userId ?? "unknown",
-            "name": UserSession.shared.displayName ?? UIDevice.current.name,
-            "destination": "Unknown",
-            "battery": Int(UIDevice.current.batteryLevel * 100),
-            "status": "disconnected",
-            "connectedNavigators": 0
-        ]]
+        // Return actual anchor data only - no mock data
+        return anchorData
     }
     
     private func getNavigatorsData() -> [[String: Any]] {
-        // This will be updated by NavigatorViewController
-        // For now, return stored data or empty array
-        if !navigatorData.isEmpty {
-            return navigatorData
-        }
-        
-        // Return mock data if no real data available
-        return [[
-            "id": UserSession.shared.userId ?? "unknown",
-            "name": UserSession.shared.displayName ?? UIDevice.current.name,
-            "targetAnchor": "none",
-            "battery": Int(UIDevice.current.batteryLevel * 100),
-            "status": "idle",
-            "connectedAnchors": 0,
-            "distances": [:] as [String: Any]
-        ]]
+        // Return actual navigator data only - no mock data
+        return navigatorData
     }
     
     // MARK: - Update Methods (to be called by view controllers)
