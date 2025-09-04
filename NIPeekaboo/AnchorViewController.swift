@@ -33,6 +33,50 @@ class AnchorViewController: UIViewController {
         return label
     }()
     
+    // Ground truth comparison view
+    private let groundTruthView: UIView = {
+        let view = UIView()
+        view.backgroundColor = .systemGray6
+        view.layer.cornerRadius = 12
+        view.translatesAutoresizingMaskIntoConstraints = false
+        view.isHidden = true
+        return view
+    }()
+    
+    private let groundTruthLabel: UILabel = {
+        let label = UILabel()
+        label.text = "Ground Truth Comparison"
+        label.font = UIFont.systemFont(ofSize: 14, weight: .semibold)
+        label.textColor = .secondaryLabel
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }()
+    
+    private let measuredDistanceLabel: UILabel = {
+        let label = UILabel()
+        label.text = "Measured: --"
+        label.font = UIFont.systemFont(ofSize: 18, weight: .medium)
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }()
+    
+    private let expectedDistanceLabel: UILabel = {
+        let label = UILabel()
+        label.text = "Expected: --"
+        label.font = UIFont.systemFont(ofSize: 18, weight: .medium)
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }()
+    
+    private let errorLabel: UILabel = {
+        let label = UILabel()
+        label.text = "Error: --"
+        label.font = UIFont.systemFont(ofSize: 16)
+        label.textColor = .systemOrange
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }()
+    
     private let tableView: UITableView = {
         let table = UITableView(frame: .zero, style: .insetGrouped)
         table.translatesAutoresizingMaskIntoConstraints = false
@@ -47,6 +91,13 @@ class AnchorViewController: UIViewController {
     // Separate sessions for anchors and navigators
     private var anchorSession: NISession?  // Single session for the other anchor
     private var navigatorSessions: [MCPeerID: NISession] = [:]  // Sessions for each navigator
+    
+    // Ground truth distances (in meters)
+    private let groundTruthDistances: [(dest1: AnchorDestination, dest2: AnchorDestination, distance: Float)] = [
+        (.window, .kitchen, 10.287),  // 405 inches
+        (.window, .meetingRoom, 5.587),  // 219.96 inches
+        (.kitchen, .meetingRoom, 6.187)  // 243.588 inches
+    ]
     
     // Token tracking
     private var anchorToken: NIDiscoveryToken?  // Token from the other anchor
@@ -131,7 +182,14 @@ class AnchorViewController: UIViewController {
         
         view.addSubview(titleLabel)
         view.addSubview(statusLabel)
+        view.addSubview(groundTruthView)
         view.addSubview(tableView)
+        
+        // Add subviews to ground truth view
+        groundTruthView.addSubview(groundTruthLabel)
+        groundTruthView.addSubview(measuredDistanceLabel)
+        groundTruthView.addSubview(expectedDistanceLabel)
+        groundTruthView.addSubview(errorLabel)
         
         NSLayoutConstraint.activate([
             titleLabel.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 20),
@@ -142,7 +200,24 @@ class AnchorViewController: UIViewController {
             statusLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
             statusLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
             
-            tableView.topAnchor.constraint(equalTo: statusLabel.bottomAnchor, constant: 20),
+            groundTruthView.topAnchor.constraint(equalTo: statusLabel.bottomAnchor, constant: 15),
+            groundTruthView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
+            groundTruthView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
+            groundTruthView.heightAnchor.constraint(equalToConstant: 120),
+            
+            groundTruthLabel.topAnchor.constraint(equalTo: groundTruthView.topAnchor, constant: 12),
+            groundTruthLabel.leadingAnchor.constraint(equalTo: groundTruthView.leadingAnchor, constant: 16),
+            
+            measuredDistanceLabel.topAnchor.constraint(equalTo: groundTruthLabel.bottomAnchor, constant: 8),
+            measuredDistanceLabel.leadingAnchor.constraint(equalTo: groundTruthView.leadingAnchor, constant: 16),
+            
+            expectedDistanceLabel.topAnchor.constraint(equalTo: measuredDistanceLabel.bottomAnchor, constant: 4),
+            expectedDistanceLabel.leadingAnchor.constraint(equalTo: groundTruthView.leadingAnchor, constant: 16),
+            
+            errorLabel.topAnchor.constraint(equalTo: expectedDistanceLabel.bottomAnchor, constant: 4),
+            errorLabel.leadingAnchor.constraint(equalTo: groundTruthView.leadingAnchor, constant: 16),
+            
+            tableView.topAnchor.constraint(equalTo: groundTruthView.bottomAnchor, constant: 15),
             tableView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             tableView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             tableView.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor)
@@ -475,6 +550,63 @@ class AnchorViewController: UIViewController {
             to: otherAnchor.userId,
             distance: distance
         )
+        
+        // Update ground truth UI
+        updateGroundTruthDisplay()
+    }
+    
+    private func updateGroundTruthDisplay() {
+        guard let myDestination = anchorDestination,
+              let otherAnchor = connectedAnchor,
+              let otherDestination = otherAnchor.destination else {
+            groundTruthView.isHidden = true
+            return
+        }
+        
+        // Show the ground truth view
+        groundTruthView.isHidden = false
+        
+        // Update measured distance
+        if let distance = otherAnchor.distance {
+            measuredDistanceLabel.text = String(format: "Measured: %.2f m", distance)
+            
+            // Get expected distance
+            if let expectedDistance = getGroundTruthDistance(from: myDestination, to: otherDestination) {
+                expectedDistanceLabel.text = String(format: "Expected: %.2f m", expectedDistance)
+                
+                // Calculate error
+                let error = distance - expectedDistance
+                let percentError = (error / expectedDistance) * 100
+                
+                errorLabel.text = String(format: "Error: %.2f m (%.1f%%)", error, percentError)
+                
+                // Color code based on error magnitude
+                if abs(percentError) < 5 {
+                    errorLabel.textColor = .systemGreen
+                } else if abs(percentError) < 10 {
+                    errorLabel.textColor = .systemOrange
+                } else {
+                    errorLabel.textColor = .systemRed
+                }
+            } else {
+                expectedDistanceLabel.text = "Expected: Unknown"
+                errorLabel.text = "Error: --"
+            }
+        } else {
+            measuredDistanceLabel.text = "Measured: --"
+            expectedDistanceLabel.text = "Expected: --"
+            errorLabel.text = "Error: --"
+        }
+    }
+    
+    private func getGroundTruthDistance(from dest1: AnchorDestination, to dest2: AnchorDestination) -> Float? {
+        for entry in groundTruthDistances {
+            if (entry.dest1 == dest1 && entry.dest2 == dest2) ||
+               (entry.dest1 == dest2 && entry.dest2 == dest1) {
+                return entry.distance
+            }
+        }
+        return nil
     }
     
     // MARK: - Helper Methods
@@ -503,6 +635,9 @@ class AnchorViewController: UIViewController {
         }
         
         statusLabel.text = statusText
+        
+        // Update ground truth display
+        updateGroundTruthDisplay()
     }
     
     // Old tracking methods removed - replaced with dual-session architecture
@@ -638,37 +773,52 @@ extension AnchorViewController: NISessionDelegate {
             return 
         }
         
-        // Get current distance measurements for error tracking
-        var measuredDistance: Float?
-        var groundTruthDistance: Float?
-        var distanceError: Float?
-        
-        // If we have distance data, calculate error
-        if let firstNavigator = connectedNavigators.first,
-           let distance = firstNavigator.distance {
-            measuredDistance = distance
+        // Prepare anchor-to-anchor data
+        var anchorConnection: [String: Any]? = nil
+        if let myDestination = anchorDestination,
+           let otherAnchor = connectedAnchor,
+           let otherDestination = otherAnchor.destination {
             
-            // Get ground truth based on anchor destination
-            if anchorDestination != nil {
-                // This would need to be calculated based on actual ground truth data
-                // For now, using placeholder values
-                groundTruthDistance = nil  // Would come from DistanceErrorTracker
-                if let groundTruth = groundTruthDistance {
-                    distanceError = measuredDistance! - groundTruth
+            var connectionData: [String: Any] = [
+                "connectedTo": otherDestination.displayName,
+                "connectedToId": otherAnchor.userId
+            ]
+            
+            if let distance = otherAnchor.distance {
+                connectionData["measuredDistance"] = distance
+                
+                if let expectedDistance = getGroundTruthDistance(from: myDestination, to: otherDestination) {
+                    connectionData["expectedDistance"] = expectedDistance
+                    connectionData["distanceError"] = distance - expectedDistance
+                    connectionData["percentError"] = ((distance - expectedDistance) / expectedDistance) * 100
                 }
             }
+            
+            anchorConnection = connectionData
+        }
+        
+        // Navigator distances
+        var navigatorDistances: [[String: Any]] = []
+        for navigator in connectedNavigators {
+            var navData: [String: Any] = [
+                "id": navigator.peerId.displayName,
+                "name": navigator.displayName
+            ]
+            if let distance = navigator.distance {
+                navData["distance"] = distance
+            }
+            navigatorDistances.append(navData)
         }
         
         let anchorData = [[
             "id": UserSession.shared.userId ?? "unknown",
             "name": UserSession.shared.displayName ?? UIDevice.current.name,
-            "destination": anchorDestination?.rawValue ?? "unknown",
+            "destination": anchorDestination?.displayName ?? "unknown",
             "battery": Int(UIDevice.current.batteryLevel * 100),
-            "status": connectedNavigators.isEmpty ? "disconnected" : "connected",
+            "status": connectedNavigators.isEmpty && connectedAnchor == nil ? "idle" : "active",
             "connectedNavigators": connectedNavigators.count,
-            "measuredDistance": measuredDistance as Any,
-            "groundTruthDistance": groundTruthDistance as Any,
-            "distanceError": distanceError as Any
+            "navigatorDistances": navigatorDistances,
+            "anchorConnection": anchorConnection as Any
         ] as [String : Any]]
         
         APIServer.shared.updateAnchorData(anchorData)
