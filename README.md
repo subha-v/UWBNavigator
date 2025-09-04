@@ -2,6 +2,16 @@
 
 A comprehensive indoor navigation system using Ultra-Wideband (UWB) technology, featuring an iOS app with Apple's Nearby Interaction framework and a web-based monitoring dashboard. Navigate to people or points of interest with centimeter-level precision while monitoring system performance in real-time.
 
+## 🆕 Latest Updates
+
+### Automatic Device Discovery with Bonjour (December 2024)
+- **Zero Configuration**: iOS devices automatically discovered via Bonjour/mDNS
+- **FastAPI Aggregation Server**: Central server that discovers and aggregates data from all iOS devices
+- **No Manual IP Setup**: Eliminates need for hardcoded IP addresses
+- **Role-Based Display**: Anchors and navigators properly separated in web console
+- **WebSocket Support**: Real-time data streaming to web dashboard
+- **Scalable Architecture**: Supports unlimited devices automatically
+
 ## 🎯 Features
 
 ### Core Navigation
@@ -24,11 +34,14 @@ A comprehensive indoor navigation system using Ultra-Wideband (UWB) technology, 
 - Battery monitoring and QoD (Quality of Data) scoring
 
 ### Guardian Console (Web Dashboard)
+- **Automatic Device Discovery**: Devices appear automatically - no configuration needed
 - **Real-time Monitoring**: View all active anchors and navigators
 - **Battery Tracking**: Monitor device battery levels
 - **QoD Scores**: Quality metrics for positioning accuracy
 - **Distance Measurements**: Live error tracking against ground truth
 - **Smart Contract Simulation**: View measurement history as transactions
+- **FastAPI Backend**: Centralized data aggregation with Bonjour discovery
+- **WebSocket Updates**: Real-time streaming of device data
 
 ## 📱 Requirements
 
@@ -40,6 +53,7 @@ A comprehensive indoor navigation system using Ultra-Wideband (UWB) technology, 
 - **Firebase Account**: For authentication and anchor discovery
 
 ### Guardian Console
+- **Python**: 3.8 or later (for FastAPI server)
 - **Node.js**: 18.0 or later
 - **npm**: 8.0 or later
 - **Modern web browser**: Chrome, Firefox, Safari, or Edge
