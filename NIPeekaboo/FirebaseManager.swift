@@ -276,28 +276,56 @@ class FirebaseManager {
     
     // MARK: - Update Existing Anchor Destinations
     func updateExistingAnchorDestinations() {
-        // Predefined mapping of emails to destinations
-        let destinationMappings: [(email: String, destination: String)] = [
-            ("subhavee1@gmail.com", "window"),
-            ("akshata@valuenex.com", "kitchen"),
-            ("elena@valuenex.com", "meeting_room")
+        // Predefined mapping of emails/UIDs to destinations
+        // Try both email and UID formats since Firebase Auth might use UIDs
+        let destinationMappings: [(identifier: String, destination: String, displayName: String)] = [
+            // Email mappings
+            ("subhavee1@gmail.com", "window", "Window Anchor"),
+            ("akshata@valuenex.com", "kitchen", "Kitchen Anchor"),
+            ("elena@valuenex.com", "meeting_room", "Meeting Room Anchor"),
+            // UID mappings (based on actual device data)
+            ("0o3RPyMtuvSwy1G67WebWQNEQDg2", "window", "subhavee1"),  // subhavee1's UID
+            ("r11EHbHmQYONTjVBXwWp54fi5Ut1", "kitchen", "akshata"),   // akshata's UID
         ]
         
         print("Starting destination updates for all anchor accounts...")
         
         for mapping in destinationMappings {
-            // Find user by email
+            // Try to find user by email first, then by UID
             db.collection("users")
-                .whereField("email", isEqualTo: mapping.email)
+                .whereField("email", isEqualTo: mapping.identifier)
                 .getDocuments { [weak self] snapshot, error in
                     if let error = error {
-                        print("Error finding user \(mapping.email): \(error)")
+                        print("Error finding user \(mapping.identifier): \(error)")
+                        return
+                    }
+                    
+                    // If not found by email, try directly as document ID (UID)
+                    if snapshot?.documents.isEmpty == true {
+                        // Try to update directly by UID
+                        self?.db.collection("users").document(mapping.identifier).getDocument { document, error in
+                            if let document = document, document.exists {
+                                // Update the document
+                                document.reference.updateData([
+                                    "destination": mapping.destination,
+                                    "displayName": mapping.displayName
+                                ]) { error in
+                                    if let error = error {
+                                        print("Error updating destination for UID \(mapping.identifier): \(error)")
+                                    } else {
+                                        print("✅ Successfully updated destination for \(mapping.displayName) (UID: \(mapping.identifier)) to \(mapping.destination)")
+                                    }
+                                }
+                            } else {
+                                print("User document not found for UID: \(mapping.identifier)")
+                            }
+                        }
                         return
                     }
                     
                     guard let documents = snapshot?.documents,
                           let userDoc = documents.first else {
-                        print("User not found: \(mapping.email)")
+                        print("User not found: \(mapping.identifier)")
                         return
                     }
                     
@@ -306,7 +334,10 @@ class FirebaseManager {
                     
                     // Update user document
                     if let userRef = self?.db.collection("users").document(userId) {
-                        batch?.updateData(["destination": mapping.destination], forDocument: userRef)
+                        batch?.updateData([
+                            "destination": mapping.destination,
+                            "displayName": mapping.displayName
+                        ], forDocument: userRef)
                     }
                     
                     // Update anchor document
@@ -317,9 +348,9 @@ class FirebaseManager {
                     // Commit batch update
                     batch?.commit { error in
                         if let error = error {
-                            print("Error updating destinations for \(mapping.email): \(error)")
+                            print("Error updating destinations for \(mapping.identifier): \(error)")
                         } else {
-                            print("Successfully updated \(mapping.email) with destination: \(mapping.destination)")
+                            print("✅ Successfully updated \(mapping.displayName) (ID: \(mapping.identifier)) with destination: \(mapping.destination)")
                         }
                     }
                 }
