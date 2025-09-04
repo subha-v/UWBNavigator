@@ -650,6 +650,12 @@ extension AnchorViewController: NISessionDelegate {
     
     // MARK: - API Data Update
     private func updateAPIData() {
+        // Only update if user is actually in anchor role
+        guard UserSession.shared.userRole == .anchor else { 
+            APIServer.shared.clearAnchorData()
+            return 
+        }
+        
         // Get current distance measurements for error tracking
         var measuredDistance: Float?
         var groundTruthDistance: Float?

@@ -464,6 +464,12 @@ class NavigatorViewController: UIViewController, NISessionDelegate {
     
     // MARK: - API Data Update
     private func updateAPIData() {
+        // Only update if user is actually in navigator role
+        guard UserSession.shared.userRole == .navigator else { 
+            APIServer.shared.clearNavigatorData()
+            return 
+        }
+        
         var distances: [String: Float] = [:]
         for (peer, distance) in anchorDistances {
             let anchorName = peer.displayName.replacingOccurrences(of: "anchor-", with: "")
