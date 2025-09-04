@@ -4,13 +4,14 @@ A comprehensive indoor navigation system using Ultra-Wideband (UWB) technology, 
 
 ## 🆕 Latest Updates
 
-### Automatic Device Discovery with Bonjour (December 2024)
+### Automatic Device Discovery with Bonjour (December 2024) - WORKING!
 - **Zero Configuration**: iOS devices automatically discovered via Bonjour/mDNS
-- **FastAPI Aggregation Server**: Central server that discovers and aggregates data from all iOS devices
-- **No Manual IP Setup**: Eliminates need for hardcoded IP addresses
-- **Role-Based Display**: Anchors and navigators properly separated in web console
+- **FastAPI Aggregation Server**: Central Python server that discovers and aggregates data from all iOS devices
+- **No Manual IP Setup**: Eliminates need for hardcoded IP addresses - devices appear automatically
+- **Role-Based Display**: Anchors and navigators properly separated in web console columns
 - **WebSocket Support**: Real-time data streaming to web dashboard
 - **Scalable Architecture**: Supports unlimited devices automatically
+- **Manual Registration Fallback**: Can manually register devices if Bonjour has issues
 
 ## 🎯 Features
 
@@ -58,7 +59,30 @@ A comprehensive indoor navigation system using Ultra-Wideband (UWB) technology, 
 - **npm**: 8.0 or later
 - **Modern web browser**: Chrome, Firefox, Safari, or Edge
 
-## 🚀 Installation
+## 🚀 Quick Start
+
+### 1. Start FastAPI Server (NEW!)
+```bash
+cd UWBNavigator
+./start_server.sh
+# Server runs on http://localhost:8000
+# Automatically discovers iOS devices on network
+```
+
+### 2. Run iOS App
+- Build and deploy to iPhone(s)
+- Sign in and select role (Anchor/Navigator)
+- Devices automatically appear in web console
+
+### 3. Open Web Dashboard
+```bash
+cd UWBNavigator-Web/uwb-navigator-web
+npm install
+npm run dev
+# Open http://localhost:3002
+```
+
+## 🚀 Detailed Installation
 
 ### 1. Clone the Repository
 ```bash
