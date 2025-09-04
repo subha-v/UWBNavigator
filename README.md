@@ -4,6 +4,13 @@ A comprehensive indoor navigation system using Ultra-Wideband (UWB) technology, 
 
 ## 🆕 Latest Updates
 
+### Bonjour Service Role Broadcasting Fix (September 2024) - NEW!
+- **Dynamic Service Updates**: Bonjour service now updates automatically after user login
+- **Accurate Role Display**: Fixed issue where devices showed incorrect role/email in network discovery
+- **Real-time Synchronization**: Service broadcasts immediately reflect current user session
+- **Enhanced Device Detection**: Web console now shows correct device information on first discovery
+- **Improved Reliability**: Eliminates need to restart app after role changes
+
 ### Automatic Device Discovery with Bonjour (December 2024) - WORKING!
 - **Zero Configuration**: iOS devices automatically discovered via Bonjour/mDNS
 - **FastAPI Aggregation Server**: Central Python server that discovers and aggregates data from all iOS devices
