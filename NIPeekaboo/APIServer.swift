@@ -157,14 +157,26 @@ class APIServer {
     
     func updateAnchorData(_ data: [[String: Any]]) {
         anchorData = data
+        // Clear navigator data when updating as anchor
+        navigatorData = []
     }
     
     func updateNavigatorData(_ data: [[String: Any]]) {
         navigatorData = data
+        // Clear anchor data when updating as navigator
+        anchorData = []
     }
     
     func updateDistanceData(_ data: [String: Any]) {
         distanceData = data
+    }
+    
+    func clearAnchorData() {
+        anchorData = []
+    }
+    
+    func clearNavigatorData() {
+        navigatorData = []
     }
     
     // MARK: - Helper Methods
