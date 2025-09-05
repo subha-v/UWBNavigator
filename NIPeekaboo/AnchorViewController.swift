@@ -89,7 +89,7 @@ class AnchorViewController: UIViewController {
     
     // MARK: - NearbyInteraction Properties
     // Separate sessions for anchors and navigators
-    private var anchorSession: NISession?  // Single session for the other anchor
+    private var anchorSessions: [MCPeerID: NISession] = [:]  // Sessions for each anchor
     private var navigatorSessions: [MCPeerID: NISession] = [:]  // Sessions for each navigator
     
     // Ground truth distances (in meters)
@@ -100,13 +100,12 @@ class AnchorViewController: UIViewController {
     ]
     
     // Token tracking
-    private var anchorToken: NIDiscoveryToken?  // Token from the other anchor
-    private var anchorPeer: MCPeerID?  // The other anchor's peer ID
-    private var navigatorTokens: [MCPeerID: NIDiscoveryToken] = [:]
+    private var anchorTokens: [MCPeerID: NIDiscoveryToken] = [:]  // Tokens from all anchors
+    private var navigatorTokens: [MCPeerID: NIDiscoveryToken] = []
     
     // Connected devices
     private var connectedNavigators: [NavigatorInfo] = []
-    private var connectedAnchor: AnchorInfo?  // Info about the other anchor (if connected)
+    private var connectedAnchors: [MCPeerID: AnchorInfo] = [:]  // Info about all connected anchors
     
     // Other properties
     private var batteryTimer: Timer?
@@ -305,22 +304,23 @@ class AnchorViewController: UIViewController {
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
             
-            // Only maintain one anchor-to-anchor connection at a time
-            if self.anchorPeer != nil {
-                print("Already connected to another anchor, ignoring: \(peer.displayName)")
+            // Support multiple anchor connections
+            if self.anchorSessions[peer] != nil {
+                print("Already connected to anchor: \(peer.displayName)")
                 return
             }
             
-            // Create single NISession for anchor-to-anchor communication
+            print("✅ Connecting to anchor: \(peer.displayName)")
+            
+            // Create NISession for this anchor
             let session = NISession()
             session.delegate = self
-            self.anchorSession = session
-            self.anchorPeer = peer
+            self.anchorSessions[peer] = session
             
             // Extract anchor info
             let displayComponents = peer.displayName.components(separatedBy: "-")
             let anchorUserId = displayComponents.count >= 2 ? displayComponents[1] : ""
-            let anchorName = "Other Anchor"
+            let anchorName = "Anchor: \(anchorUserId.prefix(8))"
             
             // Fetch destination for this anchor
             FirebaseManager.shared.fetchUserDestination(userId: anchorUserId) { [weak self] result in
@@ -342,9 +342,9 @@ class AnchorViewController: UIViewController {
                 )
                 
                 DispatchQueue.main.async {
-                    self?.connectedAnchor = anchor
+                    self?.connectedAnchors[peer] = anchor
                     
-                    // Share discovery token with the other anchor
+                    // Share discovery token with this anchor
                     if let discoveryToken = session.discoveryToken {
                         self?.shareDiscoveryToken(discoveryToken, with: peer)
                     }
@@ -352,8 +352,7 @@ class AnchorViewController: UIViewController {
                     self?.updateStatus()
                     self?.tableView.reloadData()
                     
-                    // Start distance tracking session for ground truth
-                    self?.startAnchorTrackingSession()
+                    print("📍 Connected anchors count: \(self?.connectedAnchors.count ?? 0)")
                 }
             }
         }
@@ -416,17 +415,15 @@ class AnchorViewController: UIViewController {
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
             
-            // Only handle if this was our connected anchor
-            if self.anchorPeer == peer {
-                // Clean up anchor session
-                self.anchorSession?.invalidate()
-                self.anchorSession = nil
-                self.anchorPeer = nil
-                self.anchorToken = nil
-                self.connectedAnchor = nil
+            // Clean up this anchor's session
+            if let session = self.anchorSessions[peer] {
+                session.invalidate()
+                self.anchorSessions.removeValue(forKey: peer)
+                self.anchorTokens.removeValue(forKey: peer)
+                self.connectedAnchors.removeValue(forKey: peer)
                 
-                // Stop anchor tracking session
-                DistanceErrorTracker.shared.endSession()
+                print("📴 Anchor disconnected: \(peer.displayName)")
+                print("📍 Remaining anchors: \(self.anchorSessions.count)")
                 
                 self.updateStatus()
                 self.tableView.reloadData()
@@ -474,18 +471,21 @@ class AnchorViewController: UIViewController {
             
             if peerRole == "anchor" {
                 // Handle anchor token
-                if self.anchorPeer == peer {
-                    self.anchorToken = discoveryToken
+                self.anchorTokens[peer] = discoveryToken
+                
+                // Start tracking with this anchor
+                if let session = self.anchorSessions[peer] {
+                    let config = NINearbyPeerConfiguration(peerToken: discoveryToken)
+                    session.run(config)
                     
-                    // Start tracking with the other anchor
-                    if let session = self.anchorSession {
-                        let config = NINearbyPeerConfiguration(peerToken: discoveryToken)
-                        session.run(config)
-                        
-                        // Update anchor state
-                        self.connectedAnchor?.connectionState = .tracking
-                        self.tableView.reloadData()
+                    // Update anchor state
+                    if var anchor = self.connectedAnchors[peer] {
+                        anchor.connectionState = .tracking
+                        self.connectedAnchors[peer] = anchor
                     }
+                    self.tableView.reloadData()
+                    
+                    print("🎯 Started tracking anchor: \(peer.displayName)")
                 }
             } else if peerRole == "navigator" {
                 // Handle navigator token
@@ -516,7 +516,7 @@ class AnchorViewController: UIViewController {
     // MARK: - Anchor Tracking Session
     private func startAnchorTrackingSession() {
         guard let myDestination = anchorDestination,
-              let otherAnchor = connectedAnchor,
+              let otherAnchor = connectedAnchors.values.first,
               let otherDestination = otherAnchor.destination,
               let myUserId = UserSession.shared.userId else {
             return
@@ -538,7 +538,7 @@ class AnchorViewController: UIViewController {
     }
     
     private func updateAnchorDistanceTracking() {
-        guard let otherAnchor = connectedAnchor,
+        guard let otherAnchor = connectedAnchors.values.first,
               let distance = otherAnchor.distance,
               let myUserId = UserSession.shared.userId else {
             return
@@ -614,16 +614,14 @@ class AnchorViewController: UIViewController {
         var statusText = ""
         
         // Show anchor connection status
-        if let otherAnchor = connectedAnchor {
-            if otherAnchor.connectionState == .tracking {
-                let destName = otherAnchor.destination?.displayName ?? "Unknown"
-                if let distance = otherAnchor.distance {
-                    statusText = "Connected to \(destName) anchor: \(String(format: "%.2f", distance))m"
-                } else {
-                    statusText = "Connected to \(destName) anchor"
-                }
+        if !connectedAnchors.isEmpty {
+            let anchorCount = connectedAnchors.count
+            let trackingCount = connectedAnchors.values.filter { $0.connectionState == .tracking }.count
+            
+            if trackingCount > 0 {
+                statusText = "Connected to \(anchorCount) anchor\(anchorCount > 1 ? "s" : "")"
             } else {
-                statusText = "Connecting to other anchor..."
+                statusText = "Connecting to \(anchorCount) anchor\(anchorCount > 1 ? "s" : "")..."
             }
         } else {
             statusText = "No other anchor connected"
@@ -726,19 +724,19 @@ extension AnchorViewController: NISessionDelegate {
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
             
-            // Check if this is the anchor session
-            if session === self.anchorSession {
+            // Check if this is an anchor session
+            if let anchorPeer = self.anchorSessions.first(where: { $0.value === session })?.key {
                 // Handle anchor-to-anchor distance update
-                if let anchorToken = self.anchorToken,
+                if let anchorToken = self.anchorTokens[anchorPeer],
                    let nearbyObject = nearbyObjects.first(where: { $0.discoveryToken == anchorToken }) {
                     
                     // Update anchor distance
-                    self.connectedAnchor?.distance = nearbyObject.distance
-                    self.connectedAnchor?.direction = nearbyObject.direction
-                    self.connectedAnchor?.lastUpdate = Date()
-                    
-                    // Update distance tracking for ground truth
-                    self.updateAnchorDistanceTracking()
+                    if var anchor = self.connectedAnchors[anchorPeer] {
+                        anchor.distance = nearbyObject.distance
+                        anchor.direction = nearbyObject.direction
+                        anchor.lastUpdate = Date()
+                        self.connectedAnchors[anchorPeer] = anchor
+                    }
                     
                     self.updateStatus()
                     self.tableView.reloadData()
@@ -773,28 +771,31 @@ extension AnchorViewController: NISessionDelegate {
             return 
         }
         
-        // Prepare anchor-to-anchor data
-        var anchorConnection: [String: Any]? = nil
-        if let myDestination = anchorDestination,
-           let otherAnchor = connectedAnchor,
-           let otherDestination = otherAnchor.destination {
-            
-            var connectionData: [String: Any] = [
-                "connectedTo": otherDestination.displayName,
-                "connectedToId": otherAnchor.userId
-            ]
-            
-            if let distance = otherAnchor.distance {
-                connectionData["measuredDistance"] = distance
-                
-                if let expectedDistance = getGroundTruthDistance(from: myDestination, to: otherDestination) {
-                    connectionData["expectedDistance"] = expectedDistance
-                    connectionData["distanceError"] = distance - expectedDistance
-                    connectionData["percentError"] = ((distance - expectedDistance) / expectedDistance) * 100
+        // Prepare anchor-to-anchor data for all connected anchors
+        var anchorConnections: [[String: Any]] = []
+        
+        if let myDestination = anchorDestination {
+            for (_, anchor) in connectedAnchors {
+                if let otherDestination = anchor.destination {
+                    var connectionData: [String: Any] = [
+                        "connectedTo": otherDestination.displayName,
+                        "connectedToId": anchor.userId,
+                        "peerId": anchor.peerId.displayName
+                    ]
+                    
+                    if let distance = anchor.distance {
+                        connectionData["measuredDistance"] = distance
+                        
+                        if let expectedDistance = getGroundTruthDistance(from: myDestination, to: otherDestination) {
+                            connectionData["expectedDistance"] = expectedDistance
+                            connectionData["distanceError"] = distance - expectedDistance
+                            connectionData["percentError"] = ((distance - expectedDistance) / expectedDistance) * 100
+                        }
+                    }
+                    
+                    anchorConnections.append(connectionData)
                 }
             }
-            
-            anchorConnection = connectionData
         }
         
         // Navigator distances
@@ -815,10 +816,11 @@ extension AnchorViewController: NISessionDelegate {
             "name": UserSession.shared.displayName ?? UIDevice.current.name,
             "destination": anchorDestination?.displayName ?? "unknown",
             "battery": Int(UIDevice.current.batteryLevel * 100),
-            "status": connectedNavigators.isEmpty && connectedAnchor == nil ? "idle" : "active",
+            "status": connectedNavigators.isEmpty && connectedAnchors.isEmpty ? "idle" : "active",
             "connectedNavigators": connectedNavigators.count,
+            "connectedAnchors": connectedAnchors.count,
             "navigatorDistances": navigatorDistances,
-            "anchorConnection": anchorConnection as Any
+            "anchorConnections": anchorConnections
         ] as [String : Any]]
         
         APIServer.shared.updateAnchorData(anchorData)

@@ -555,6 +555,11 @@ async def get_aggregated():
     """Get aggregated data from all devices"""
     return await get_aggregated_data()
 
+@app.get("/api/all")
+async def get_all():
+    """Alias for /api/aggregated for backward compatibility"""
+    return await get_aggregated_data()
+
 @app.get("/api/diagnostics")
 async def get_diagnostics():
     """Get diagnostic information"""
