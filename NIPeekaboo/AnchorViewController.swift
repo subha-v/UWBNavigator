@@ -349,6 +349,9 @@ class AnchorViewController: UIViewController {
                         self?.shareDiscoveryToken(discoveryToken, with: peer)
                     }
                     
+                    // Restart tracking session to include new anchor
+                    self?.startAnchorTrackingSession()
+                    
                     self?.updateStatus()
                     self?.tableView.reloadData()
                     
@@ -516,24 +519,33 @@ class AnchorViewController: UIViewController {
     // MARK: - Anchor Tracking Session
     private func startAnchorTrackingSession() {
         guard let myDestination = anchorDestination,
-              let otherAnchor = connectedAnchors.values.first,
-              let otherDestination = otherAnchor.destination,
               let myUserId = UserSession.shared.userId else {
             return
         }
         
-        // Start distance tracking session between the two anchors
+        // Build participants map for ALL connected anchors
         var participants: [String: AnchorDestination] = [:]
         participants[myUserId] = myDestination
-        participants[otherAnchor.userId] = otherDestination
         
-        DistanceErrorTracker.shared.startSession(participants: participants)
-        
-        // Start measurement timer if not already running
-        if measurementTimer == nil {
-            measurementTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
-                self?.updateAnchorDistanceTracking()
+        // Add all connected anchors with destinations to the session
+        for (_, anchor) in connectedAnchors {
+            if let destination = anchor.destination {
+                participants[anchor.userId] = destination
             }
+        }
+        
+        // Only start session if we have at least 2 participants (self + at least one other anchor)
+        if participants.count >= 2 {
+            DistanceErrorTracker.shared.startSession(participants: participants)
+            
+            // Start measurement timer if not already running
+            if measurementTimer == nil {
+                measurementTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+                    self?.updateAnchorDistanceTracking()
+                }
+            }
+            
+            print("📍 Started anchor tracking session with \(participants.count) participants")
         }
     }
     
@@ -556,46 +568,51 @@ class AnchorViewController: UIViewController {
     }
     
     private func updateGroundTruthDisplay() {
-        guard let myDestination = anchorDestination,
-              let otherAnchor = connectedAnchor,
-              let otherDestination = otherAnchor.destination else {
+        guard let myDestination = anchorDestination else {
             groundTruthView.isHidden = true
             return
         }
         
-        // Show the ground truth view
-        groundTruthView.isHidden = false
+        // Calculate aggregate statistics for all connected anchors
+        var totalMeasured = 0.0
+        var totalExpected = 0.0
+        var totalError = 0.0
+        var anchorCount = 0
         
-        // Update measured distance
-        if let distance = otherAnchor.distance {
-            measuredDistanceLabel.text = String(format: "Measured: %.2f m", distance)
+        for (_, anchor) in connectedAnchors {
+            if let otherDestination = anchor.destination,
+               let distance = anchor.distance,
+               let expectedDistance = getGroundTruthDistance(from: myDestination, to: otherDestination) {
+                totalMeasured += distance
+                totalExpected += expectedDistance
+                totalError += abs(distance - expectedDistance)
+                anchorCount += 1
+            }
+        }
+        
+        if anchorCount > 0 {
+            // Show the ground truth view with aggregate stats
+            groundTruthView.isHidden = false
             
-            // Get expected distance
-            if let expectedDistance = getGroundTruthDistance(from: myDestination, to: otherDestination) {
-                expectedDistanceLabel.text = String(format: "Expected: %.2f m", expectedDistance)
-                
-                // Calculate error
-                let error = distance - expectedDistance
-                let percentError = (error / expectedDistance) * 100
-                
-                errorLabel.text = String(format: "Error: %.2f m (%.1f%%)", error, percentError)
-                
-                // Color code based on error magnitude
-                if abs(percentError) < 5 {
-                    errorLabel.textColor = .systemGreen
-                } else if abs(percentError) < 10 {
-                    errorLabel.textColor = .systemOrange
-                } else {
-                    errorLabel.textColor = .systemRed
-                }
+            let avgMeasured = totalMeasured / Double(anchorCount)
+            let avgExpected = totalExpected / Double(anchorCount)
+            let avgError = totalError / Double(anchorCount)
+            let avgPercentError = (avgError / avgExpected) * 100
+            
+            measuredDistanceLabel.text = String(format: "Avg Measured: %.2f m (\(anchorCount) anchors)", avgMeasured)
+            expectedDistanceLabel.text = String(format: "Avg Expected: %.2f m", avgExpected)
+            errorLabel.text = String(format: "Avg Error: %.2f m (%.1f%%)", avgError, avgPercentError)
+            
+            // Color code based on average error magnitude
+            if avgPercentError < 5 {
+                errorLabel.textColor = .systemGreen
+            } else if avgPercentError < 10 {
+                errorLabel.textColor = .systemOrange
             } else {
-                expectedDistanceLabel.text = "Expected: Unknown"
-                errorLabel.text = "Error: --"
+                errorLabel.textColor = .systemRed
             }
         } else {
-            measuredDistanceLabel.text = "Measured: --"
-            expectedDistanceLabel.text = "Expected: --"
-            errorLabel.text = "Error: --"
+            groundTruthView.isHidden = true
         }
     }
     
@@ -850,16 +867,16 @@ extension AnchorViewController: NISessionDelegate {
 extension AnchorViewController: UITableViewDataSource {
     func numberOfSections(in tableView: UITableView) -> Int {
         var sections = 0
-        if connectedAnchor != nil { sections += 1 }
+        if !connectedAnchors.isEmpty { sections += 1 }
         if !connectedNavigators.isEmpty { sections += 1 }
         return max(1, sections) // At least 1 section for empty state
     }
     
     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-        if connectedAnchor != nil && section == 0 {
-            return 1  // Only one anchor connection at a time
+        if !connectedAnchors.isEmpty && section == 0 {
+            return connectedAnchors.count  // Show ALL connected anchors
         } else if !connectedNavigators.isEmpty {
-            let navigatorSection = (connectedAnchor != nil) ? 1 : 0
+            let navigatorSection = (!connectedAnchors.isEmpty) ? 1 : 0
             if section == navigatorSection {
                 return connectedNavigators.count
             }
@@ -868,12 +885,12 @@ extension AnchorViewController: UITableViewDataSource {
     }
     
     func tableView(_ tableView: UITableView, titleForHeaderInSection section: Int) -> String? {
-        if connectedAnchor != nil && section == 0 {
-            return "Connected Anchor"
+        if !connectedAnchors.isEmpty && section == 0 {
+            return "Connected Anchors (\(connectedAnchors.count))"
         } else if !connectedNavigators.isEmpty {
-            let navigatorSection = (connectedAnchor != nil) ? 1 : 0
+            let navigatorSection = (!connectedAnchors.isEmpty) ? 1 : 0
             if section == navigatorSection {
-                return "Connected Navigators"
+                return "Connected Navigators (\(connectedNavigators.count))"
             }
         }
         return nil
@@ -882,10 +899,13 @@ extension AnchorViewController: UITableViewDataSource {
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         let cell = tableView.dequeueReusableCell(withIdentifier: "NavigatorCell", for: indexPath) as! NavigatorTableViewCell
         
-        if let anchor = connectedAnchor, indexPath.section == 0 {
+        if !connectedAnchors.isEmpty && indexPath.section == 0 {
+            // Show anchor at this index
+            let anchorArray = Array(connectedAnchors.values)
+            let anchor = anchorArray[indexPath.row]
             cell.configureForAnchor(with: anchor)
         } else if !connectedNavigators.isEmpty {
-            let navigatorSection = (connectedAnchor != nil) ? 1 : 0
+            let navigatorSection = (!connectedAnchors.isEmpty) ? 1 : 0
             if indexPath.section == navigatorSection {
                 let navigator = connectedNavigators[indexPath.row]
                 cell.configure(with: navigator)
@@ -986,13 +1006,39 @@ class NavigatorTableViewCell: UITableViewCell {
         case .tracking:
             statusIndicator.backgroundColor = .systemGreen
             if let distance = anchor.distance {
-                distanceLabel.text = String(format: "Distance: %.2f m", distance)
+                var distanceText = String(format: "Distance: %.2f m", distance)
+                
+                // Add error information if we have ground truth data
+                if let myVC = self.superview?.superview as? UITableView,
+                   let anchorVC = myVC.dataSource as? AnchorViewController,
+                   let myDestination = anchorVC.anchorDestination,
+                   let otherDestination = anchor.destination,
+                   let expectedDistance = anchorVC.getGroundTruthDistance(from: myDestination, to: otherDestination) {
+                    let error = distance - expectedDistance
+                    let percentError = (error / expectedDistance) * 100
+                    distanceText += String(format: " (Error: %.1f%%)", percentError)
+                    
+                    // Color code based on error
+                    if abs(percentError) < 5 {
+                        distanceLabel.textColor = .systemGreen
+                    } else if abs(percentError) < 10 {
+                        distanceLabel.textColor = .systemOrange
+                    } else {
+                        distanceLabel.textColor = .systemRed
+                    }
+                } else {
+                    distanceLabel.textColor = .systemGray
+                }
+                
+                distanceLabel.text = distanceText
             } else {
                 distanceLabel.text = "Tracking..."
+                distanceLabel.textColor = .systemGray
             }
         case .disconnected:
             statusIndicator.backgroundColor = .systemRed
             distanceLabel.text = "Disconnected"
+            distanceLabel.textColor = .systemGray
         }
     }
 }
