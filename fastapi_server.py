@@ -37,9 +37,9 @@ class IOSDeviceListener(ServiceListener):
         try:
             info = zeroconf.get_service_info(service_type, name)
             if info:
-                # Parse service info
-                addresses = [socket.inet_ntoa(addr) for addr in info.addresses]
-                ip = addresses[0] if addresses else None
+                # Parse service info - handle both IPv4 and IPv6
+                addresses = self._parse_addresses(info.addresses)
+                ip = addresses.get('ipv4', addresses.get('ipv6'))  # Prefer IPv4 for compatibility
                 port = info.port
                 
                 # Parse TXT record for metadata
@@ -68,7 +68,8 @@ class IOSDeviceListener(ServiceListener):
                     'name': txt_data.get('deviceName', 'Unknown Device'),
                     'email': txt_data.get('email', 'unknown'),
                     'role': txt_data.get('role', 'unknown'),
-                    'ip': ip,
+                    'addresses': addresses,  # Store all addresses
+                    'ip': ip,  # Primary IP for backward compatibility
                     'port': port,
                     'service_name': name,
                     'last_seen': datetime.now().isoformat(),
@@ -108,86 +109,131 @@ class IOSDeviceListener(ServiceListener):
     def update_service(self, zeroconf: Zeroconf, service_type: str, name: str) -> None:
         """Called when a service is updated"""
         self.add_service(zeroconf, service_type, name)
+    
+    def _parse_addresses(self, raw_addresses: List[bytes]) -> Dict[str, str]:
+        """Parse both IPv4 and IPv6 addresses"""
+        addresses = {}
+        
+        for addr_bytes in raw_addresses:
+            try:
+                # Try IPv4 first
+                if len(addr_bytes) == 4:
+                    addr = socket.inet_ntoa(addr_bytes)
+                    addresses['ipv4'] = addr
+                    logger.debug(f"  Found IPv4: {addr}")
+                # Try IPv6
+                elif len(addr_bytes) == 16:
+                    addr = socket.inet_ntop(socket.AF_INET6, addr_bytes)
+                    # Clean up IPv6 address (remove zone index if present)
+                    if '%' in addr:
+                        addr = addr.split('%')[0]
+                    addresses['ipv6'] = addr
+                    logger.debug(f"  Found IPv6: {addr}")
+                else:
+                    logger.warning(f"  Unknown address format: {len(addr_bytes)} bytes")
+            except Exception as e:
+                logger.error(f"  Error parsing address: {e}")
+        
+        return addresses
 
 async def fetch_device_data(device_id: str) -> None:
-    """Fetch data from a specific iOS device"""
+    """Fetch data from a specific iOS device with IPv4/IPv6 support"""
     device = discovered_devices.get(device_id)
     if not device or device['status'] == 'offline':
+        return
+    
+    # Get all available addresses to try
+    addresses_to_try = []
+    if device.get('addresses'):
+        # Try IPv4 first if available (better compatibility)
+        if 'ipv4' in device['addresses']:
+            addresses_to_try.append(device['addresses']['ipv4'])
+        if 'ipv6' in device['addresses']:
+            # IPv6 addresses need brackets in URLs
+            addresses_to_try.append(f"[{device['addresses']['ipv6']}]")
+    elif device.get('ip'):
+        addresses_to_try.append(device['ip'])
+    
+    if not addresses_to_try:
+        logger.error(f"No addresses available for {device_id}")
+        device['status'] = 'error'
         return
     
     # Try multiple ports if needed
     ports = [device['port']] if device.get('port') else [8080, 8081, 8082, 8083]
     
     async with httpx.AsyncClient(timeout=2.0) as client:
-        for port in ports:
-            try:
-                base_url = f"http://{device['ip']}:{port}"
-                
-                # Test connection
-                status_response = await client.get(f"{base_url}/api/status")
-                if status_response.status_code != 200:
-                    continue
-                
-                # Fetch all endpoints
-                tasks = [
-                    client.get(f"{base_url}/api/status"),
-                    client.get(f"{base_url}/api/anchors"),
-                    client.get(f"{base_url}/api/navigators"),
-                    client.get(f"{base_url}/api/distances")
-                ]
-                
-                responses = await asyncio.gather(*tasks, return_exceptions=True)
-                
-                # Process responses
-                data = {
-                    'device_id': device_id,
-                    'device_info': device,
-                    'timestamp': datetime.now().isoformat(),
-                    'status': {},
-                    'anchors': [],
-                    'navigators': [],
-                    'distances': {}
-                }
-                
-                for i, response in enumerate(responses):
-                    if isinstance(response, Exception):
+        for address in addresses_to_try:
+            for port in ports:
+                try:
+                    base_url = f"http://{address}:{port}"
+                    
+                    # Test connection
+                    status_response = await client.get(f"{base_url}/api/status")
+                    if status_response.status_code != 200:
                         continue
-                    if response.status_code == 200:
-                        try:
-                            if i == 0:  # status
-                                data['status'] = response.json()
-                            elif i == 1:  # anchors
-                                anchors_data = response.json()
-                                if isinstance(anchors_data, list):
-                                    data['anchors'] = anchors_data
-                            elif i == 2:  # navigators
-                                navigators_data = response.json()
-                                if isinstance(navigators_data, list):
-                                    data['navigators'] = navigators_data
-                            elif i == 3:  # distances
-                                data['distances'] = response.json()
-                        except Exception as e:
-                            logger.error(f"Error parsing response from {device_id}: {e}")
-                
-                # Update cache
-                device_data_cache[device_id] = data
-                device['status'] = 'connected'
-                device['last_successful_fetch'] = datetime.now().isoformat()
-                device['port'] = port  # Save working port
-                
-                # Notify WebSocket clients
-                await broadcast_update()
-                
-                logger.debug(f"✅ Fetched data from {device['email']} on port {port}")
-                return
-                
-            except Exception as e:
-                logger.debug(f"Failed to fetch from {device['ip']}:{port}: {e}")
-                continue
+                    
+                    # Fetch all endpoints
+                    tasks = [
+                        client.get(f"{base_url}/api/status"),
+                        client.get(f"{base_url}/api/anchors"),
+                        client.get(f"{base_url}/api/navigators"),
+                        client.get(f"{base_url}/api/distances")
+                    ]
+                    
+                    responses = await asyncio.gather(*tasks, return_exceptions=True)
+                    
+                    # Process responses
+                    data = {
+                        'device_id': device_id,
+                        'device_info': device,
+                        'timestamp': datetime.now().isoformat(),
+                        'status': {},
+                        'anchors': [],
+                        'navigators': [],
+                        'distances': {}
+                    }
+                    
+                    for i, response in enumerate(responses):
+                        if isinstance(response, Exception):
+                            continue
+                        if response.status_code == 200:
+                            try:
+                                if i == 0:  # status
+                                    data['status'] = response.json()
+                                elif i == 1:  # anchors
+                                    anchors_data = response.json()
+                                    if isinstance(anchors_data, list):
+                                        data['anchors'] = anchors_data
+                                elif i == 2:  # navigators
+                                    navigators_data = response.json()
+                                    if isinstance(navigators_data, list):
+                                        data['navigators'] = navigators_data
+                                elif i == 3:  # distances
+                                    data['distances'] = response.json()
+                            except Exception as e:
+                                logger.error(f"Error parsing response from {device_id}: {e}")
+                    
+                    # Update cache
+                    device_data_cache[device_id] = data
+                    device['status'] = 'connected'
+                    device['last_successful_fetch'] = datetime.now().isoformat()
+                    device['port'] = port  # Save working port
+                    device['working_address'] = address  # Save working address
+                    
+                    # Notify WebSocket clients
+                    await broadcast_update()
+                    
+                    logger.info(f"✅ Connected to {device['email']} at {address}:{port}")
+                    return
+                    
+                except Exception as e:
+                    logger.debug(f"Failed to fetch from {address}:{port}: {e}")
+                    continue
     
-    # Mark as error if all ports failed
+    # Mark as error if all addresses and ports failed
     device['status'] = 'error'
-    logger.warning(f"⚠️ Could not fetch data from {device['email']}")
+    logger.warning(f"⚠️ Could not fetch data from {device['email']} - tried addresses: {addresses_to_try}")
 
 async def broadcast_update():
     """Broadcast updates to all connected WebSocket clients"""
@@ -223,7 +269,8 @@ async def get_aggregated_data() -> Dict[str, Any]:
             'name': device_info.get('name', 'Unknown'),
             'email': device_info.get('email', 'unknown'),
             'role': device_info.get('role', 'unknown'),
-            'ip': device_info.get('ip'),
+            'addresses': device_info.get('addresses', {}),  # Include all addresses
+            'ip': device_info.get('ip'),  # Legacy support
             'port': device_info.get('port'),
             'status': device_info.get('status', 'unknown'),
             'last_seen': device_info.get('last_seen'),
@@ -246,9 +293,9 @@ async def get_aggregated_data() -> Dict[str, Any]:
                     'battery': None,
                     'connectedNavigators': 0,
                     'destination': destination,
-                    'error_message': f"Device unreachable at {device_info.get('ip')}",
+                    'error_message': f"Device unreachable at {device_info.get('working_address', device_info.get('ip'))}",
                     'source_device': device_info.get('email', 'unknown'),
-                    'source_ip': device_info.get('ip')
+                    'source_ip': device_info.get('working_address', device_info.get('ip'))
                 }
                 all_anchors.append(placeholder)
             elif device_info['role'] == 'navigator':
@@ -259,9 +306,9 @@ async def get_aggregated_data() -> Dict[str, Any]:
                     'status': 'error',
                     'battery': None,
                     'connectedAnchors': 0,
-                    'error_message': f"Device unreachable at {device_info.get('ip')}",
+                    'error_message': f"Device unreachable at {device_info.get('working_address', device_info.get('ip'))}",
                     'source_device': device_info.get('email', 'unknown'),
-                    'source_ip': device_info.get('ip')
+                    'source_ip': device_info.get('working_address', device_info.get('ip'))
                 }
                 all_navigators.append(placeholder)
     
@@ -273,7 +320,7 @@ async def get_aggregated_data() -> Dict[str, Any]:
         for anchor in cached_data.get('anchors', []):
             # Add source device info
             anchor['source_device'] = device_info.get('email', 'unknown')
-            anchor['source_ip'] = device_info.get('ip')
+            anchor['source_ip'] = device_info.get('working_address', device_info.get('ip'))
             # Don't add if we already added a placeholder
             if not any(a['id'] == anchor.get('id') for a in all_anchors):
                 all_anchors.append(anchor)
@@ -282,7 +329,7 @@ async def get_aggregated_data() -> Dict[str, Any]:
         for navigator in cached_data.get('navigators', []):
             # Add source device info
             navigator['source_device'] = device_info.get('email', 'unknown')
-            navigator['source_ip'] = device_info.get('ip')
+            navigator['source_ip'] = device_info.get('working_address', device_info.get('ip'))
             # Don't add if we already added a placeholder
             if not any(n['id'] == navigator.get('id') for n in all_navigators):
                 all_navigators.append(navigator)

@@ -4,7 +4,15 @@ A comprehensive indoor navigation system using Ultra-Wideband (UWB) technology, 
 
 ## 🆕 Latest Updates
 
-### Bonjour Service Role Broadcasting Fix (September 2024) - NEW!
+### IPv6 and IPv4 Dual-Stack Support (January 2025) - NEW!
+- **Full IPv6 Support**: Discovery and connection now work seamlessly with both IPv4 and IPv6 addresses
+- **Dual-Stack mDNS Discovery**: Automatically detects and uses both address families from Bonjour/mDNS broadcasts
+- **Intelligent Address Selection**: Prefers IPv4 for compatibility but falls back to IPv6 when needed
+- **Multiple Address Attempts**: Tries all available addresses (both IPv4 and IPv6) for robust connectivity
+- **Enhanced Error Handling**: Better logging and diagnostics for connection attempts across both protocols
+- **Future-Proof**: Fully compatible with IPv6-only networks as required by modern iOS deployments
+
+### Bonjour Service Role Broadcasting Fix (September 2024)
 - **Dynamic Service Updates**: Bonjour service now updates automatically after user login
 - **Accurate Role Display**: Fixed issue where devices showed incorrect role/email in network discovery
 - **Real-time Synchronization**: Service broadcasts immediately reflect current user session
@@ -314,6 +322,34 @@ UWBNavigator/
 4. **Ranging**: NI Discovery Tokens → UWB Sessions
 5. **Visualization**: NINearbyObject → Arrow Updates
 
+### Network Architecture (IPv4/IPv6 Dual-Stack)
+
+The FastAPI server implements full dual-stack support for seamless operation across different network configurations:
+
+#### mDNS/Bonjour Discovery
+- **Service Type**: `_uwbnav._tcp.local.` (standard) or `_uwbnav-http._tcp.local.` (HTTP variant)
+- **Address Parsing**: Handles both 4-byte (IPv4) and 16-byte (IPv6) address formats
+- **TXT Records**: Includes deviceId, email, role, and deviceName metadata
+
+#### Connection Strategy
+1. **Address Priority**: Attempts IPv4 first for compatibility, falls back to IPv6
+2. **URL Formatting**: Automatically brackets IPv6 addresses (e.g., `http://[2001:db8::1]:8080`)
+3. **Multi-Port Support**: Tries ports 8080-8083 for each address
+4. **Retry Logic**: Exhaustive testing of all address/port combinations
+
+#### Implementation Details
+```python
+# IPv4 parsing
+if len(addr_bytes) == 4:
+    addr = socket.inet_ntoa(addr_bytes)  # Standard IPv4
+    
+# IPv6 parsing  
+elif len(addr_bytes) == 16:
+    addr = socket.inet_ntop(socket.AF_INET6, addr_bytes)  # IPv6 with proper formatting
+    if '%' in addr:
+        addr = addr.split('%')[0]  # Remove zone index if present
+```
+
 ## 🔧 Troubleshooting
 
 ### Common Issues
@@ -326,6 +362,7 @@ UWBNavigator/
 - Ensure both devices have WiFi and Bluetooth enabled
 - Check that both are on the same network
 - Restart the app on both devices
+- For IPv6-only networks, ensure router supports mDNS/Bonjour multicast
 
 **Arrow not appearing**
 - Verify line of sight between devices
@@ -336,6 +373,12 @@ UWBNavigator/
 - Keep devices within range
 - Avoid obstacles between devices
 - Check battery optimization settings
+
+**IPv6 Connection Issues**
+- Check if devices advertise IPv6 addresses: Look for `Found IPv6:` in server logs
+- Verify IPv6 connectivity: `ping6 <device-ipv6-address>`
+- Some routers may block IPv6 multicast - check router settings
+- If only IPv6 works, ensure FastAPI server binds to `::/0` (all IPv6 interfaces)
 
 ### Performance Tips
 - Best accuracy with clear line of sight
