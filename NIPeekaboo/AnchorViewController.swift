@@ -538,18 +538,18 @@ class AnchorViewController: UIViewController {
     }
     
     private func updateAnchorDistanceTracking() {
-        guard let otherAnchor = connectedAnchors.values.first,
-              let distance = otherAnchor.distance,
-              let myUserId = UserSession.shared.userId else {
-            return
-        }
+        guard let myUserId = UserSession.shared.userId else { return }
         
-        // Update distance tracker with anchor-to-anchor distance
-        DistanceErrorTracker.shared.updateDistance(
-            from: myUserId,
-            to: otherAnchor.userId,
-            distance: distance
-        )
+        // Update distance tracker for ALL connected anchors
+        for (_, anchor) in connectedAnchors {
+            if let distance = anchor.distance {
+                DistanceErrorTracker.shared.updateDistance(
+                    from: myUserId,
+                    to: anchor.userId,
+                    distance: distance
+                )
+            }
+        }
         
         // Update ground truth UI
         updateGroundTruthDisplay()

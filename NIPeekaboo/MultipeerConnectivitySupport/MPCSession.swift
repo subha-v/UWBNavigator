@@ -187,6 +187,9 @@ class MPCSession: NSObject, MCSessionDelegate, MCNearbyServiceBrowserDelegate, M
         } else if userRole == "anchor" && peerRole == "navigator" {
             // Anchor accepts connections from navigators
             shouldConnect = true
+        } else if userRole == "anchor" && peerRole == "anchor" {
+            // Anchors connect to other anchors for mesh network
+            shouldConnect = true
         } else if userRole == nil || peerRole == nil {
             // Fallback to original identity matching for backward compatibility
             shouldConnect = peerIdentity == identityString
