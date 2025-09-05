@@ -216,10 +216,8 @@ async def get_aggregated_data() -> Dict[str, Any]:
     all_navigators = []
     devices_info = []
     
-    for device_id, cached_data in device_data_cache.items():
-        device_info = discovered_devices.get(device_id, {})
-        
-        # Add device to devices list
+    # First, add all discovered devices (including those with errors)
+    for device_id, device_info in discovered_devices.items():
         devices_info.append({
             'id': device_id,
             'name': device_info.get('name', 'Unknown'),
@@ -229,22 +227,65 @@ async def get_aggregated_data() -> Dict[str, Any]:
             'port': device_info.get('port'),
             'status': device_info.get('status', 'unknown'),
             'last_seen': device_info.get('last_seen'),
-            'battery': cached_data.get('status', {}).get('batteryLevel')
+            'battery': device_data_cache.get(device_id, {}).get('status', {}).get('batteryLevel')
         })
         
-        # Aggregate anchors
+        # If device has error status but we know its role, add placeholder entry
+        if device_info.get('status') in ['error', 'offline', 'stale'] and device_info.get('role'):
+            if device_info['role'] == 'anchor':
+                # Add placeholder anchor with error status
+                # Try to get name from email field first (which contains Firebase UID)
+                email_uid = device_info.get('email', '')
+                display_name = get_display_name_for_uid(email_uid) if email_uid != 'unknown' else get_display_name_for_uid(device_id)
+                destination = get_destination_for_uid(email_uid) if email_uid != 'unknown' else get_destination_for_uid(device_id)
+                
+                placeholder = {
+                    'id': device_id,
+                    'name': display_name,
+                    'status': 'error',
+                    'battery': None,
+                    'connectedNavigators': 0,
+                    'destination': destination,
+                    'error_message': f"Device unreachable at {device_info.get('ip')}",
+                    'source_device': device_info.get('email', 'unknown'),
+                    'source_ip': device_info.get('ip')
+                }
+                all_anchors.append(placeholder)
+            elif device_info['role'] == 'navigator':
+                # Add placeholder navigator with error status
+                placeholder = {
+                    'id': device_id,
+                    'name': get_display_name_for_uid(device_id),
+                    'status': 'error',
+                    'battery': None,
+                    'connectedAnchors': 0,
+                    'error_message': f"Device unreachable at {device_info.get('ip')}",
+                    'source_device': device_info.get('email', 'unknown'),
+                    'source_ip': device_info.get('ip')
+                }
+                all_navigators.append(placeholder)
+    
+    # Then process cached data for devices that are working
+    for device_id, cached_data in device_data_cache.items():
+        device_info = discovered_devices.get(device_id, {})
+        
+        # Aggregate anchors from cached data
         for anchor in cached_data.get('anchors', []):
             # Add source device info
             anchor['source_device'] = device_info.get('email', 'unknown')
             anchor['source_ip'] = device_info.get('ip')
-            all_anchors.append(anchor)
+            # Don't add if we already added a placeholder
+            if not any(a['id'] == anchor.get('id') for a in all_anchors):
+                all_anchors.append(anchor)
         
-        # Aggregate navigators
+        # Aggregate navigators from cached data
         for navigator in cached_data.get('navigators', []):
             # Add source device info
             navigator['source_device'] = device_info.get('email', 'unknown')
             navigator['source_ip'] = device_info.get('ip')
-            all_navigators.append(navigator)
+            # Don't add if we already added a placeholder
+            if not any(n['id'] == navigator.get('id') for n in all_navigators):
+                all_navigators.append(navigator)
     
     return {
         'devices': devices_info,
@@ -253,6 +294,53 @@ async def get_aggregated_data() -> Dict[str, Any]:
         'timestamp': datetime.now().isoformat(),
         'connection_count': len([d for d in discovered_devices.values() if d.get('status') == 'connected'])
     }
+
+# Helper functions for device name mapping
+def get_display_name_for_uid(uid: str) -> str:
+    """Get display name for a device UID or email"""
+    known_devices = {
+        '0o3RPyMtuvSwy1G67WebWQNEQDg2': 'subhavee1',
+        'r11EHbHmQYONTjVBXwWp54fi5Ut1': 'akshata',
+        'sk8ZPKzrHZcmabLXtEMxZJ6fpF13': 'elena',
+        'lTgHZ1VtdHM2EEPqpDLsPER1gnJ2': 'adpatil989',
+        # Device IDs that appear in Bonjour
+        '4061215B-9D0D-4532-B593-04A214A7AF06': 'subhavee1',
+        'AFE370FE-2C4C-4752-A73B-B479EAA892B0': 'akshata',
+        '794E13A3-0B3F-4834-B94C-9E7CFF960B1C': 'elena',
+        'F6A209A8-53D3-4D76-B84D-77B08ACACB83': 'adpatil989'
+    }
+    # Also check if the uid itself is one of our Firebase UIDs (used as email field)
+    if uid.startswith('0o3RPyMtuvSwy1G'):
+        return 'subhavee1'
+    elif uid.startswith('r11EHbHmQYONTjV'):
+        return 'akshata'
+    elif uid.startswith('sk8ZPKzrHZcmabL'):
+        return 'elena'
+    elif uid.startswith('lTgHZ1VtdHM2EEP'):
+        return 'adpatil989'
+    
+    return known_devices.get(uid, uid[:8] + '...')
+
+def get_destination_for_uid(uid: str) -> str:
+    """Get destination for an anchor UID or email"""
+    destinations = {
+        '0o3RPyMtuvSwy1G67WebWQNEQDg2': 'Window',
+        'r11EHbHmQYONTjVBXwWp54fi5Ut1': 'Kitchen', 
+        'sk8ZPKzrHZcmabLXtEMxZJ6fpF13': 'Meeting Room',
+        # Device IDs
+        '4061215B-9D0D-4532-B593-04A214A7AF06': 'Window',
+        'AFE370FE-2C4C-4752-A73B-B479EAA892B0': 'Kitchen',
+        '794E13A3-0B3F-4834-B94C-9E7CFF960B1C': 'Meeting Room'
+    }
+    # Check partial UIDs
+    if uid.startswith('0o3RPyMtuvSwy1G') or uid == '4061215B-9D0D-4532-B593-04A214A7AF06':
+        return 'Window'
+    elif uid.startswith('r11EHbHmQYONTjV') or uid == 'AFE370FE-2C4C-4752-A73B-B479EAA892B0':
+        return 'Kitchen'
+    elif uid.startswith('sk8ZPKzrHZcmabL') or uid == '794E13A3-0B3F-4834-B94C-9E7CFF960B1C':
+        return 'Meeting Room'
+        
+    return destinations.get(uid, 'Unknown')
 
 async def periodic_fetch():
     """Periodically fetch data from all discovered devices"""
