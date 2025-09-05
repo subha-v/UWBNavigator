@@ -79,15 +79,12 @@ class APIServer: NSObject {
     func updateBonjourService() {
         guard isRunning else { return }
         
-        // Get current port
-        let currentPort = server.port ?? 8080
-        
         // Stop existing Bonjour service
         netService?.stop()
         netService = nil
         
-        // Restart with updated user info
-        startBonjourService(port: Int(currentPort))
+        // Restart with updated user info (using the stored port)
+        startBonjourService(port: currentPort)
         print("📡 Updated Bonjour service with role: \(UserSession.shared.userRole?.rawValue ?? "unknown"), email: \(UserSession.shared.userId ?? "unknown")")
     }
     
