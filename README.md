@@ -20,6 +20,13 @@ A comprehensive indoor navigation system using Ultra-Wideband (UWB) technology, 
 - **Scalable Architecture**: Supports unlimited devices automatically
 - **Manual Registration Fallback**: Can manually register devices if Bonjour has issues
 
+### Multi-Device Connection Support (September 2024) - WORKING!
+- **Two Anchor Phone Setup**: Successfully tested with two anchor devices running simultaneously  
+- **Single Navigator Connection**: One navigator device can connect to and track multiple anchors
+- **Stable WebApp Integration**: All devices properly appear and stream data to the web console
+- **Enhanced Auto-Discovery**: Improved `auto_discover.py` and `auto_discover.sh` scripts for better device detection
+- **Robust API Server**: Updated APIServer.swift with better multi-port support and connection handling
+
 ## 🎯 Features
 
 ### Core Navigation
