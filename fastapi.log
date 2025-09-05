@@ -1,0 +1,4 @@
+Traceback (most recent call last):
+  File "/Users/subha/Downloads/UWBNavigator/fastapi_server.py", line 13, in <module>
+    from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+ModuleNotFoundError: No module named 'fastapi'

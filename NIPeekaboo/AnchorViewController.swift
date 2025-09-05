@@ -101,7 +101,7 @@ class AnchorViewController: UIViewController {
     
     // Token tracking
     private var anchorTokens: [MCPeerID: NIDiscoveryToken] = [:]  // Tokens from all anchors
-    private var navigatorTokens: [MCPeerID: NIDiscoveryToken] = []
+    private var navigatorTokens: [MCPeerID: NIDiscoveryToken] = [:]
     
     // Connected devices
     private var connectedNavigators: [NavigatorInfo] = []
@@ -110,7 +110,7 @@ class AnchorViewController: UIViewController {
     // Other properties
     private var batteryTimer: Timer?
     private var mpc: MPCSession?
-    private var anchorDestination: AnchorDestination?
+    var anchorDestination: AnchorDestination?
     private var measurementTimer: Timer?
     
     // MARK: - Data Model
@@ -583,9 +583,9 @@ class AnchorViewController: UIViewController {
             if let otherDestination = anchor.destination,
                let distance = anchor.distance,
                let expectedDistance = getGroundTruthDistance(from: myDestination, to: otherDestination) {
-                totalMeasured += distance
-                totalExpected += expectedDistance
-                totalError += abs(distance - expectedDistance)
+                totalMeasured += Double(distance)
+                totalExpected += Double(expectedDistance)
+                totalError += Double(abs(distance - expectedDistance))
                 anchorCount += 1
             }
         }
@@ -616,7 +616,7 @@ class AnchorViewController: UIViewController {
         }
     }
     
-    private func getGroundTruthDistance(from dest1: AnchorDestination, to dest2: AnchorDestination) -> Float? {
+    func getGroundTruthDistance(from dest1: AnchorDestination, to dest2: AnchorDestination) -> Float? {
         for entry in groundTruthDistances {
             if (entry.dest1 == dest1 && entry.dest2 == dest2) ||
                (entry.dest1 == dest2 && entry.dest2 == dest1) {
@@ -686,7 +686,7 @@ class AnchorViewController: UIViewController {
         }
         
         // Update QoD score if tracking session is active
-        if measurementTimer != nil && connectedAnchor != nil {
+        if measurementTimer != nil && !connectedAnchors.isEmpty {
             // QoD score when actively tracking another anchor
             FirebaseManager.shared.updateQoDScore(userId: userId, score: 85)
         } else {
@@ -717,8 +717,10 @@ class AnchorViewController: UIViewController {
         DistanceErrorTracker.shared.endSession()
         
         // Clean up sessions
-        anchorSession?.invalidate()
-        anchorSession = nil
+        for (_, session) in anchorSessions {
+            session.invalidate()
+        }
+        anchorSessions.removeAll()
         navigatorSessions.values.forEach { $0.invalidate() }
         navigatorSessions.removeAll()
         mpc?.invalidate()
