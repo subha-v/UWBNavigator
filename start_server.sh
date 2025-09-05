@@ -28,13 +28,13 @@ pip install -r requirements.txt
 
 # Start the server
 echo ""
-echo "✅ Starting FastAPI server on http://localhost:8000"
-echo "📱 The server will automatically discover iOS devices running the UWB Navigator app"
+echo "✅ Starting Enhanced FastAPI server with IPv6 support on http://localhost:8000"
+echo "📱 The server will automatically discover iOS devices (IPv4 and IPv6) running the UWB Navigator app"
 echo "🌐 Open http://localhost:8000 in your browser to see the API documentation"
 echo ""
 echo "Press Ctrl+C to stop the server"
 echo "----------------------------------------"
 echo ""
 
-# Run the server
-python fastapi_server.py
+# Run the enhanced server with IPv6 support
+python fastapi_server_enhanced.py
