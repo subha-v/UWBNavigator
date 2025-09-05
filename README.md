@@ -4,7 +4,16 @@ A comprehensive indoor navigation system using Ultra-Wideband (UWB) technology, 
 
 ## 🆕 Latest Updates
 
-### IPv6 and IPv4 Dual-Stack Support (January 2025) - NEW!
+### Full Multi-Anchor Mesh Network Support (January 2025) - NEW!
+- **Anchor-to-Anchor Connections**: All anchor phones now connect to each other via NISessions
+- **Complete Distance Tracking**: Every anchor tracks distances to ALL other anchors in the network
+- **Enhanced UI Display**: Anchor phones show real-time distances and errors to all connected anchors
+- **Aggregate Statistics**: Ground truth view displays average metrics across all anchor connections
+- **Color-Coded Errors**: Visual feedback showing accuracy with green (<5%), orange (<10%), or red (>10%) error indicators
+- **Dynamic Session Management**: Automatically starts tracking sessions when new anchors join the network
+- **Improved Table View**: Shows all connected anchors with individual distance measurements and error percentages
+
+### IPv6 and IPv4 Dual-Stack Support (January 2025)
 - **Full IPv6 Support**: Discovery and connection now work seamlessly with both IPv4 and IPv6 addresses
 - **Dual-Stack mDNS Discovery**: Automatically detects and uses both address families from Bonjour/mDNS broadcasts
 - **Intelligent Address Selection**: Prefers IPv4 for compatibility but falls back to IPv6 when needed
