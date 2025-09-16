@@ -12,6 +12,7 @@ from typing import Dict, List, Any, Optional, Set
 from datetime import datetime, timedelta
 from contextlib import asynccontextmanager
 from ipaddress import ip_address, IPv4Address, IPv6Address
+from statistics import median
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -29,6 +30,16 @@ logging.basicConfig(
     ]
 )
 logger = logging.getLogger(__name__)
+
+# Ground truth distances between anchor destinations (in meters)
+GROUND_TRUTH_DISTANCES = {
+    "Window-Kitchen": 10.287,
+    "Kitchen-Window": 10.287,
+    "Window-Meeting Room": 5.587,
+    "Meeting Room-Window": 5.587,
+    "Kitchen-Meeting Room": 6.187,
+    "Meeting Room-Kitchen": 6.187,
+}
 
 # Thread-safe global state with locks
 discovered_devices_lock = threading.RLock()
@@ -433,6 +444,73 @@ async def broadcast_update():
             websocket_clients.remove(client)
             logger.debug(f"🔌 Removed disconnected WebSocket client")
 
+def calculate_qod(device_data: Dict[str, Any], max_error: float = 0.20, w_acc: float = 0.9, w_batt: float = 0.1) -> Optional[float]:
+    """
+    Calculate Quality of Distance (QoD) score based on accuracy and battery.
+
+    Args:
+        device_data: Device data including anchorConnections and battery
+        max_error: Maximum acceptable error for scaling (default 20% = 0.20)
+        w_acc: Weight for accuracy score (default 90% = 0.9)
+        w_batt: Weight for battery score (default 10% = 0.1)
+
+    Returns:
+        QoD score (0-100) or None if no data available
+    """
+    # Extract error measurements from anchor connections
+    errors = []
+    connections = device_data.get('anchorConnections', [])
+    destination = device_data.get('destination', '')
+
+    logger.debug(f"Calculating QoD for {device_data.get('name', 'unknown')}: destination={destination}, connections={len(connections)}")
+
+    for conn in connections:
+        measured = conn.get('measuredDistance')
+        expected = conn.get('expectedDistance')
+        percent_error = conn.get('percentError')
+        connected_to = conn.get('connectedTo', '')
+
+        # Try to get ground truth if expected distance not provided
+        if expected is None and destination and connected_to:
+            key = f"{destination}-{connected_to}"
+            expected = GROUND_TRUTH_DISTANCES.get(key)
+
+        # Calculate error fraction
+        if percent_error is not None:
+            # Convert percent to fraction if needed
+            error_fraction = percent_error / 100.0 if percent_error > 1 else percent_error
+            errors.append(abs(error_fraction))
+        elif measured is not None and expected is not None and expected > 0:
+            # Calculate error from measured vs expected
+            error_fraction = abs(measured - expected) / max(expected, 1e-9)
+            errors.append(error_fraction)
+
+    # No connections = N/A
+    if not errors:
+        return None
+
+    # Calculate accuracy score using median of errors
+    # Scale: 0% error = 100 score, max_error (20%) = 0 score
+    typical_error = median(errors)
+    accuracy_score = 100.0 * max(0.0, 1.0 - (typical_error / max_error))
+    accuracy_score = max(0, min(100, accuracy_score))
+
+    # Battery score (directly use battery percentage)
+    battery = device_data.get('battery', 0)
+    try:
+        battery = float(battery)
+    except (TypeError, ValueError):
+        battery = 0.0
+    battery_score = max(0, min(100, battery))
+
+    # Combined QoD score
+    qod = w_acc * accuracy_score + w_batt * battery_score
+
+    # Log the calculation details for debugging
+    logger.debug(f"  Error: {typical_error*100:.2f}%, Accuracy Score: {accuracy_score:.1f}, Battery: {battery_score:.1f}%, QoD: {qod:.1f}")
+
+    return round(max(0, min(100, qod)))
+
 async def get_aggregated_data() -> Dict[str, Any]:
     """Aggregate data from all connected devices (thread-safe)"""
     all_anchors = []
@@ -462,17 +540,34 @@ async def get_aggregated_data() -> Dict[str, Any]:
     # Process cached data
     for device_id, cached_data in cache_copy.items():
         device_info = devices_copy.get(device_id, {})
-        
+
         # Aggregate anchors
         for anchor in cached_data.get('anchors', []):
             anchor['source_device'] = device_info.get('email', 'unknown')
             anchor['source_ip'] = device_info.get('working_address', device_info.get('ip'))
+
+            # Calculate QoD for anchor based on their connections and battery
+            qod_value = calculate_qod(anchor)
+            anchor['qod'] = qod_value
+
+            # Debug logging
+            if qod_value is not None:
+                logger.debug(f"✅ QoD calculated for {anchor.get('name', 'unknown')}: {qod_value}")
+            else:
+                logger.debug(f"⚠️ QoD is None for {anchor.get('name', 'unknown')} - connections: {len(anchor.get('anchorConnections', []))}")
+
             all_anchors.append(anchor)
-        
+
         # Aggregate navigators
         for navigator in cached_data.get('navigators', []):
             navigator['source_device'] = device_info.get('email', 'unknown')
             navigator['source_ip'] = device_info.get('working_address', device_info.get('ip'))
+
+            # Calculate QoD for navigator if they have distance measurements
+            # For navigators, we'd need to adapt the calculation based on their distance data structure
+            # For now, leave navigator QoD as None since they don't have anchorConnections
+            navigator['qod'] = None
+
             all_navigators.append(navigator)
     
     return {
@@ -614,6 +709,68 @@ async def websocket_endpoint(websocket: WebSocket):
                 websocket_clients.remove(websocket)
         logger.info(f"📱 WebSocket client disconnected (remaining: {len(websocket_clients)})")
 
+def kill_process_on_port(port: int):
+    """Kill any process using the specified port"""
+    import subprocess
+    import platform
+
+    system = platform.system()
+
+    try:
+        if system == "Darwin" or system == "Linux":
+            # Find process using the port
+            result = subprocess.run(
+                ["lsof", "-i", f":{port}"],
+                capture_output=True,
+                text=True
+            )
+
+            if result.stdout:
+                lines = result.stdout.strip().split('\n')[1:]  # Skip header
+                for line in lines:
+                    if line:
+                        parts = line.split()
+                        if len(parts) > 1:
+                            pid = parts[1]
+                            try:
+                                # Kill the process
+                                subprocess.run(["kill", "-9", pid], check=False)
+                                logger.info(f"✅ Killed process {pid} using port {port}")
+                            except Exception as e:
+                                logger.warning(f"Could not kill process {pid}: {e}")
+        elif system == "Windows":
+            # Windows command to find and kill process
+            result = subprocess.run(
+                ["netstat", "-ano"],
+                capture_output=True,
+                text=True
+            )
+
+            for line in result.stdout.split('\n'):
+                if f":{port}" in line and "LISTENING" in line:
+                    parts = line.split()
+                    if parts:
+                        pid = parts[-1]
+                        try:
+                            subprocess.run(["taskkill", "/F", "/PID", pid], check=False)
+                            logger.info(f"✅ Killed process {pid} using port {port}")
+                        except Exception as e:
+                            logger.warning(f"Could not kill process {pid}: {e}")
+    except Exception as e:
+        logger.warning(f"Could not check/kill processes on port {port}: {e}")
+
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+
+    # Kill any existing process on port 8000
+    port = 8000
+    logger.info(f"🔍 Checking for existing processes on port {port}...")
+    kill_process_on_port(port)
+
+    # Small delay to ensure port is released
+    import time
+    time.sleep(0.5)
+
+    # Start the server
+    logger.info(f"🚀 Starting server on port {port}...")
+    uvicorn.run(app, host="0.0.0.0", port=port)
