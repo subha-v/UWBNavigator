@@ -1,0 +1,14 @@
+# Core dependencies for similarity server
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+python-multipart==0.0.6  # For file uploads
+httpx==0.25.1  # For webapp communication
+zeroconf==0.119.0  # For Bonjour service advertisement
+
+# Image similarity dependencies
+torch>=2.0.0
+torchvision>=0.15.0
+transformers>=4.30.0
+Pillow>=9.5.0
+scikit-image>=0.21.0
+numpy>=1.24.0

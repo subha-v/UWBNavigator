@@ -14,15 +14,10 @@ from contextlib import asynccontextmanager
 from ipaddress import ip_address, IPv4Address, IPv6Address
 from statistics import median
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, File, Form, UploadFile
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
 import httpx
 from zeroconf import ServiceBrowser, ServiceListener, Zeroconf, ServiceInfo
-import sys
-import os
-import uuid
-import socket
 
 # Configure comprehensive logging
 logging.basicConfig(
@@ -611,8 +606,7 @@ async def lifespan(app: FastAPI):
             port=8000,
             properties={
                 'version': '1.0',
-                'path': '/api',
-                'similarity_endpoint': '/api/similarity'
+                'path': '/api'
             }
         )
 
@@ -714,98 +708,7 @@ async def get_diagnostics():
     
     return diagnostics
 
-@app.post("/api/similarity")
-async def calculate_similarity(
-    image: UploadFile = File(...),
-    navigator_id: str = Form(...),
-    navigator_name: str = Form(...),
-    anchor_destination: str = Form(...),
-    anchor_id: str = Form(None),
-    timestamp: str = Form(None)
-):
-    """Calculate similarity between uploaded image and ground truth for anchor destination."""
-    try:
-        logger.info(f"📸 Received photo from navigator_id: {navigator_id}, navigator_name: {navigator_name}, anchor: {anchor_destination}")
-
-        # Read image data
-        image_data = await image.read()
-
-        # Add similarity path to system path if needed
-        similarity_path = "/Users/subha/Downloads/UWBNavigator-Web/similarity"
-        if similarity_path not in sys.path:
-            sys.path.append(similarity_path)
-
-        # Import the similarity module
-        from image_similarity import calculate_similarity_from_bytes
-
-        # Calculate similarity score
-        similarity_score = calculate_similarity_from_bytes(image_data, anchor_destination)
-
-        logger.info(f"📸 Calculated similarity for navigator {navigator_name} at {anchor_destination}: {similarity_score:.1f}%")
-
-        # Create smart contract data
-        contract_data = {
-            "txId": f"0x{uuid.uuid4().hex[:8]}",
-            "navigatorId": navigator_name,
-            "navigatorUserId": navigator_id,
-            "anchors": [anchor_destination],
-            "anchorId": anchor_id,
-            "asset": "Location verification | Photo attestation",
-            "price": 15,
-            "currency": "USDC",
-            "status": "Settled",
-            "qodQuorum": "Pass" if similarity_score >= 50 else "Fail",
-            "timestamp": datetime.now().isoformat(),
-            "dop": round(similarity_score / 50, 1),  # Degree of precision based on similarity
-            "minAnchors": 1,
-            "actualAnchors": 1,
-            "similarityScore": similarity_score
-        }
-
-        # Broadcast update to all WebSocket clients
-        update_message = {
-            "type": "navigator_completed",
-            "data": {
-                "navigator_id": navigator_id,
-                "navigator_name": navigator_name,
-                "qod_score": similarity_score,
-                "anchor_destination": anchor_destination,
-                "contract": contract_data,
-                "timestamp": datetime.now().isoformat()
-            }
-        }
-
-        # Send to all connected WebSocket clients
-        with websocket_clients_lock:
-            disconnected_clients = []
-            for client in websocket_clients:
-                try:
-                    await client.send_json(update_message)
-                except Exception as e:
-                    logger.warning(f"Failed to send to WebSocket client: {e}")
-                    disconnected_clients.append(client)
-
-            # Remove disconnected clients
-            for client in disconnected_clients:
-                websocket_clients.remove(client)
-
-        return JSONResponse(content={
-            "success": True,
-            "similarity_score": similarity_score,
-            "contract": contract_data,
-            "message": f"Photo similarity: {similarity_score:.1f}%"
-        })
-
-    except Exception as e:
-        logger.error(f"❌ Error calculating similarity: {str(e)}")
-        return JSONResponse(
-            status_code=500,
-            content={
-                "success": False,
-                "error": str(e),
-                "message": "Failed to calculate similarity"
-            }
-        )
+# Image similarity endpoint removed - moved to similarity_server.py
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
