@@ -14,11 +14,15 @@ from contextlib import asynccontextmanager
 from ipaddress import ip_address, IPv4Address, IPv6Address
 from statistics import median
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, File, Form, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import httpx
-from zeroconf import ServiceBrowser, ServiceListener, Zeroconf
+from zeroconf import ServiceBrowser, ServiceListener, Zeroconf, ServiceInfo
+import sys
+import os
+import uuid
+import socket
 
 # Configure comprehensive logging
 logging.basicConfig(
@@ -582,24 +586,52 @@ async def get_aggregated_data() -> Dict[str, Any]:
 async def lifespan(app: FastAPI):
     """Manage application lifecycle"""
     global zeroconf_instance, service_browser
-    
+
     logger.info("🚀 Starting Enhanced FastAPI server with IPv6 support")
-    
+
     # Initialize Zeroconf
     zeroconf_instance = Zeroconf()
     listener = EnhancedIOSDeviceListener()
     service_browser = ServiceBrowser(zeroconf_instance, "_uwbnav-http._tcp.local.", listener)
-    
+
     logger.info("📡 Started Bonjour service discovery")
-    
+
+    # Advertise our FastAPI server via Bonjour
+    service_info = None
+    try:
+        # Get local IP address
+        hostname = socket.gethostname()
+        local_ip = socket.gethostbyname(hostname)
+
+        # Create service info for our FastAPI server
+        service_info = ServiceInfo(
+            "_uwbnav-fastapi._tcp.local.",
+            "UWB Navigator FastAPI Server._uwbnav-fastapi._tcp.local.",
+            addresses=[socket.inet_aton(local_ip)],
+            port=8000,
+            properties={
+                'version': '1.0',
+                'path': '/api',
+                'similarity_endpoint': '/api/similarity'
+            }
+        )
+
+        zeroconf_instance.register_service(service_info)
+        logger.info(f"✅ Advertising FastAPI server on {local_ip}:8000 via Bonjour")
+
+    except Exception as e:
+        logger.error(f"Failed to advertise service via Bonjour: {e}")
+
     # Start background tasks
     asyncio.create_task(periodic_fetch())
     asyncio.create_task(cleanup_stale_devices())
-    
+
     yield
-    
+
     # Cleanup
     logger.info("🛑 Shutting down...")
+    if service_info:
+        zeroconf_instance.unregister_service(service_info)
     if service_browser:
         service_browser.cancel()
     if zeroconf_instance:
@@ -681,6 +713,99 @@ async def get_diagnostics():
     }
     
     return diagnostics
+
+@app.post("/api/similarity")
+async def calculate_similarity(
+    image: UploadFile = File(...),
+    navigator_id: str = Form(...),
+    navigator_name: str = Form(...),
+    anchor_destination: str = Form(...),
+    anchor_id: str = Form(None),
+    timestamp: str = Form(None)
+):
+    """Calculate similarity between uploaded image and ground truth for anchor destination."""
+    try:
+        logger.info(f"📸 Received photo from navigator_id: {navigator_id}, navigator_name: {navigator_name}, anchor: {anchor_destination}")
+
+        # Read image data
+        image_data = await image.read()
+
+        # Add similarity path to system path if needed
+        similarity_path = "/Users/subha/Downloads/UWBNavigator-Web/similarity"
+        if similarity_path not in sys.path:
+            sys.path.append(similarity_path)
+
+        # Import the similarity module
+        from image_similarity import calculate_similarity_from_bytes
+
+        # Calculate similarity score
+        similarity_score = calculate_similarity_from_bytes(image_data, anchor_destination)
+
+        logger.info(f"📸 Calculated similarity for navigator {navigator_name} at {anchor_destination}: {similarity_score:.1f}%")
+
+        # Create smart contract data
+        contract_data = {
+            "txId": f"0x{uuid.uuid4().hex[:8]}",
+            "navigatorId": navigator_name,
+            "navigatorUserId": navigator_id,
+            "anchors": [anchor_destination],
+            "anchorId": anchor_id,
+            "asset": "Location verification | Photo attestation",
+            "price": 15,
+            "currency": "USDC",
+            "status": "Settled",
+            "qodQuorum": "Pass" if similarity_score >= 50 else "Fail",
+            "timestamp": datetime.now().isoformat(),
+            "dop": round(similarity_score / 50, 1),  # Degree of precision based on similarity
+            "minAnchors": 1,
+            "actualAnchors": 1,
+            "similarityScore": similarity_score
+        }
+
+        # Broadcast update to all WebSocket clients
+        update_message = {
+            "type": "navigator_completed",
+            "data": {
+                "navigator_id": navigator_id,
+                "navigator_name": navigator_name,
+                "qod_score": similarity_score,
+                "anchor_destination": anchor_destination,
+                "contract": contract_data,
+                "timestamp": datetime.now().isoformat()
+            }
+        }
+
+        # Send to all connected WebSocket clients
+        with websocket_clients_lock:
+            disconnected_clients = []
+            for client in websocket_clients:
+                try:
+                    await client.send_json(update_message)
+                except Exception as e:
+                    logger.warning(f"Failed to send to WebSocket client: {e}")
+                    disconnected_clients.append(client)
+
+            # Remove disconnected clients
+            for client in disconnected_clients:
+                websocket_clients.remove(client)
+
+        return JSONResponse(content={
+            "success": True,
+            "similarity_score": similarity_score,
+            "contract": contract_data,
+            "message": f"Photo similarity: {similarity_score:.1f}%"
+        })
+
+    except Exception as e:
+        logger.error(f"❌ Error calculating similarity: {str(e)}")
+        return JSONResponse(
+            status_code=500,
+            content={
+                "success": False,
+                "error": str(e),
+                "message": "Failed to calculate similarity"
+            }
+        )
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):

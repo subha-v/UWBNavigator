@@ -679,12 +679,12 @@ class AnchorViewController: UIViewController {
     private func updateBatteryLevel() {
         guard let userId = UserSession.shared.userId else { return }
         let batteryLevel = UIDevice.current.batteryLevel
-        
+
         // Only update if battery level is valid (>= 0)
         if batteryLevel >= 0 {
             FirebaseManager.shared.updateBatteryLevel(userId: userId, batteryLevel: batteryLevel)
         }
-        
+
         // Update QoD score if tracking session is active
         if measurementTimer != nil && !connectedAnchors.isEmpty {
             // QoD score when actively tracking another anchor
@@ -692,6 +692,9 @@ class AnchorViewController: UIViewController {
         } else {
             FirebaseManager.shared.updateQoDScore(userId: userId, score: nil)
         }
+
+        // Update API data to ensure anchor stays visible on webapp
+        updateAPIData()
     }
     
     // MARK: - Actions

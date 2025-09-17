@@ -10,7 +10,7 @@ import NearbyInteraction
 import MultipeerConnectivity
 import Firebase
 
-class NavigatorViewController: UIViewController, NISessionDelegate {
+class NavigatorViewController: UIViewController, NISessionDelegate, UIImagePickerControllerDelegate, UINavigationControllerDelegate, NetServiceBrowserDelegate, NetServiceDelegate {
     
     // MARK: - UI Components
     private let arrowView: ArrowView = {
@@ -122,6 +122,18 @@ class NavigatorViewController: UIViewController, NISessionDelegate {
         button.translatesAutoresizingMaskIntoConstraints = false
         return button
     }()
+
+    private let reachedDestinationButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setTitle("Reached Destination", for: .normal)
+        button.backgroundColor = .systemGreen
+        button.setTitleColor(.white, for: .normal)
+        button.titleLabel?.font = UIFont.systemFont(ofSize: 18, weight: .semibold)
+        button.layer.cornerRadius = 12
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.isHidden = true
+        return button
+    }()
     
     // MARK: - NearbyInteraction Properties
     private var sessions: [MCPeerID: NISession] = [:]
@@ -137,6 +149,12 @@ class NavigatorViewController: UIViewController, NISessionDelegate {
     // MARK: - Navigation Properties
     var selectedAnchorId: String?
     var selectedAnchorName: String?
+
+    // MARK: - Server Discovery
+    // Use your Mac's IP address for testing (update this when your IP changes)
+    private var fastAPIServerURL: String = "http://10.1.10.206:8000"
+    private var serviceBrowser: NetServiceBrowser?
+    private var fastAPIService: NetService?
     
     // MARK: - Distance and Direction State
     enum DistanceDirectionState {
@@ -151,7 +169,8 @@ class NavigatorViewController: UIViewController, NISessionDelegate {
         setupActions()
         startNavigatorMode()
         startBatteryMonitoring()
-        
+        discoverFastAPIServer()
+
         // Only initialize API data if actually in navigator role
         if UserSession.shared.userRole == .navigator {
             updateAPIData()
@@ -161,6 +180,8 @@ class NavigatorViewController: UIViewController, NISessionDelegate {
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         updatePresence(isOnline: true)
+        // Update API data when view appears to ensure navigator shows up on webapp
+        updateAPIData()
     }
     
     override func viewWillDisappear(_ animated: Bool) {
@@ -196,6 +217,7 @@ class NavigatorViewController: UIViewController, NISessionDelegate {
         view.addSubview(arrowView)
         view.addSubview(detailContainer)
         view.addSubview(disconnectButton)
+        view.addSubview(reachedDestinationButton)
         
         // Setup detail container subviews
         detailContainer.addSubview(distanceLabel)
@@ -258,15 +280,22 @@ class NavigatorViewController: UIViewController, NISessionDelegate {
             
             // Disconnect Button
             disconnectButton.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -30),
-            disconnectButton.centerXAnchor.constraint(equalTo: view.centerXAnchor)
+            disconnectButton.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+
+            // Reached Destination Button
+            reachedDestinationButton.bottomAnchor.constraint(equalTo: disconnectButton.topAnchor, constant: -20),
+            reachedDestinationButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 40),
+            reachedDestinationButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -40),
+            reachedDestinationButton.heightAnchor.constraint(equalToConstant: 50)
         ])
-        
+
         // Initially hide detail container
         detailContainer.alpha = 0
     }
     
     private func setupActions() {
         disconnectButton.addTarget(self, action: #selector(disconnectTapped), for: .touchUpInside)
+        reachedDestinationButton.addTarget(self, action: #selector(reachedDestinationTapped), for: .touchUpInside)
     }
     
     // MARK: - Navigator Mode
@@ -658,6 +687,12 @@ class NavigatorViewController: UIViewController, NISessionDelegate {
         if state == .closeUpInFOV && currentDistanceDirectionState != .closeUpInFOV {
             arrowView.triggerHapticFeedback()
         }
+
+        // Show/hide reached destination button when close
+        UIView.animate(withDuration: 0.3) {
+            self.reachedDestinationButton.isHidden = (state != .closeUpInFOV)
+            self.reachedDestinationButton.alpha = (state == .closeUpInFOV) ? 1.0 : 0.0
+        }
     }
     
     private func updateDirectionIndicators(azimuth: Float, elevation: Float) {
@@ -713,15 +748,18 @@ class NavigatorViewController: UIViewController, NISessionDelegate {
     private func updateBatteryLevel() {
         guard let userId = UserSession.shared.userId else { return }
         let batteryLevel = UIDevice.current.batteryLevel
-        
+
         // Only update if battery level is valid (>= 0)
         if batteryLevel >= 0 {
             FirebaseManager.shared.updateBatteryLevel(userId: userId, batteryLevel: batteryLevel)
         }
-        
+
         // Update QoD score based on connected anchors
         let hasAllAnchors = connectedAnchors.count >= 3
         FirebaseManager.shared.updateQoDScore(userId: userId, score: hasAllAnchors ? 90 : nil)
+
+        // Update API data to ensure navigator stays visible on webapp even when idle
+        updateAPIData()
     }
     
     private func updatePresence(isOnline: Bool) {
@@ -733,16 +771,20 @@ class NavigatorViewController: UIViewController, NISessionDelegate {
     private func cleanupSession() {
         measurementTimer?.invalidate()
         measurementTimer = nil
-        
+
         batteryTimer?.invalidate()
         batteryTimer = nil
-        
+
+        // Stop service discovery
+        serviceBrowser?.stop()
+        serviceBrowser = nil
+
         DistanceErrorTracker.shared.endSession()
-        
+
         // Clear all NI sessions
         sessions.values.forEach { $0.invalidate() }
         sessions.removeAll()
-        
+
         // Reset anchor tracking state
         connectedAnchors.removeAll()
         anchorDistances.removeAll()
@@ -751,15 +793,15 @@ class NavigatorViewController: UIViewController, NISessionDelegate {
         currentDistanceDirectionState = .unknown
         // Important: Do NOT clear selectedAnchorId and selectedAnchorName here
         // They are set by the AnchorSelectionViewController and should persist
-        
+
         // Invalidate MPC session
         mpc?.invalidate()
         mpc = nil
-        
+
         // Reset UI
         updateStatus("Disconnected")
         updateVisualization(from: .unknown, to: .unknown, with: nil)
-        
+
         // Clear API data
         updateAPIData()
     }
@@ -797,5 +839,248 @@ class NavigatorViewController: UIViewController, NISessionDelegate {
             self?.navigationController?.popViewController(animated: true)
         })
         present(alert, animated: true)
+    }
+
+    @objc private func reachedDestinationTapped() {
+        // Present camera to take photo
+        let imagePicker = UIImagePickerController()
+        imagePicker.delegate = self
+        imagePicker.sourceType = .camera
+        imagePicker.allowsEditing = false
+        present(imagePicker, animated: true)
+    }
+
+    // MARK: - UIImagePickerControllerDelegate
+    func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey : Any]) {
+        picker.dismiss(animated: true)
+
+        guard let image = info[.originalImage] as? UIImage else { return }
+
+        // Send photo to server for similarity calculation
+        sendPhotoToServer(image: image)
+    }
+
+    func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
+        picker.dismiss(animated: true)
+    }
+
+    // MARK: - Photo Submission
+    private func sendPhotoToServer(image: UIImage) {
+        // Show loading indicator
+        let loadingAlert = UIAlertController(title: "Processing", message: "Calculating similarity score...", preferredStyle: .alert)
+        present(loadingAlert, animated: true)
+
+        // Convert image to JPEG data
+        guard let imageData = image.jpegData(compressionQuality: 0.8) else {
+            loadingAlert.dismiss(animated: true)
+            return
+        }
+
+        // Use discovered FastAPI server URL (or fallback to hardcoded IP)
+        let apiUrl = "\(fastAPIServerURL)/api/similarity"
+        NSLog("📡 Using FastAPI server at: \(apiUrl)")
+        NSLog("📸 Preparing to send photo for navigator: \(UserSession.shared.displayName ?? "unknown")")
+        NSLog("📸 Target anchor: \(selectedAnchorName ?? "unknown")")
+
+        guard let url = URL(string: apiUrl) else {
+            loadingAlert.dismiss(animated: true)
+            showError("Invalid server URL: \(apiUrl)")
+            return
+        }
+
+        // Prepare request
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+
+        let boundary = UUID().uuidString
+        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+
+        // Create multipart form data
+        var body = Data()
+
+        // Add navigator ID (Firebase userId, not display name)
+        if let navigatorId = UserSession.shared.userId {
+            body.append("--\(boundary)\r\n".data(using: .utf8)!)
+            body.append("Content-Disposition: form-data; name=\"navigator_id\"\r\n\r\n".data(using: .utf8)!)
+            body.append("\(navigatorId)\r\n".data(using: .utf8)!)  // This should be the Firebase UID
+            NSLog("📸 Sending navigator_id: \(navigatorId)")
+        }
+
+        // Add navigator name
+        if let navigatorName = UserSession.shared.displayName {
+            body.append("--\(boundary)\r\n".data(using: .utf8)!)
+            body.append("Content-Disposition: form-data; name=\"navigator_name\"\r\n\r\n".data(using: .utf8)!)
+            body.append("\(navigatorName)\r\n".data(using: .utf8)!)
+        }
+
+        // Add anchor destination
+        if let anchorName = selectedAnchorName {
+            body.append("--\(boundary)\r\n".data(using: .utf8)!)
+            body.append("Content-Disposition: form-data; name=\"anchor_destination\"\r\n\r\n".data(using: .utf8)!)
+            body.append("\(anchorName)\r\n".data(using: .utf8)!)
+        }
+
+        // Add anchor ID
+        if let anchorId = selectedAnchorId {
+            body.append("--\(boundary)\r\n".data(using: .utf8)!)
+            body.append("Content-Disposition: form-data; name=\"anchor_id\"\r\n\r\n".data(using: .utf8)!)
+            body.append("\(anchorId)\r\n".data(using: .utf8)!)
+        }
+
+        // Add timestamp
+        body.append("--\(boundary)\r\n".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"timestamp\"\r\n\r\n".data(using: .utf8)!)
+        body.append("\(Date().timeIntervalSince1970)\r\n".data(using: .utf8)!)
+
+        // Add image data
+        body.append("--\(boundary)\r\n".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"image\"; filename=\"photo.jpg\"\r\n".data(using: .utf8)!)
+        body.append("Content-Type: image/jpeg\r\n\r\n".data(using: .utf8)!)
+        body.append(imageData)
+        body.append("\r\n".data(using: .utf8)!)
+
+        body.append("--\(boundary)--\r\n".data(using: .utf8)!)
+
+        request.httpBody = body
+        request.timeoutInterval = 30  // 30 second timeout
+
+        NSLog("📸 Sending photo to server: \(apiUrl)")
+        NSLog("📸 Request body size: \(body.count) bytes")
+        NSLog("📸 Navigator: \(UserSession.shared.displayName ?? "unknown"), Anchor: \(selectedAnchorName ?? "unknown")")
+
+        // Create URL session with timeout configuration
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 30
+        config.timeoutIntervalForResource = 30
+        let session = URLSession(configuration: config)
+
+        // Send request
+        session.dataTask(with: request) { [weak self] data, response, error in
+            DispatchQueue.main.async {
+                loadingAlert.dismiss(animated: true) {
+                    if let error = error {
+                        NSLog("❌ Error sending photo: \(error.localizedDescription)")
+                        self?.showError("Failed to send photo: \(error.localizedDescription)")
+                        return
+                    }
+
+                    if let httpResponse = response as? HTTPURLResponse {
+                        NSLog("📸 Server response status: \(httpResponse.statusCode)")
+                        if httpResponse.statusCode != 200 {
+                            if let data = data, let errorString = String(data: data, encoding: .utf8) {
+                                NSLog("❌ Server error: \(errorString)")
+                                self?.showError("Server error: \(errorString)")
+                            } else {
+                                self?.showError("Server error: Status \(httpResponse.statusCode)")
+                            }
+                            return
+                        }
+                    }
+
+                    guard let data = data else {
+                        NSLog("❌ No data received from server")
+                        self?.showError("No response from server")
+                        return
+                    }
+
+                    do {
+                        let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+                        NSLog("✅ Server response: \(json ?? [:])")
+
+                        guard let similarityScore = json?["similarity_score"] as? Double else {
+                            NSLog("❌ No similarity score in response")
+                            self?.showError("Invalid response format")
+                            return
+                        }
+
+                        NSLog("✅ Similarity score: \(similarityScore)%")
+
+                        // Show success message
+                        let successAlert = UIAlertController(
+                            title: "Mission Complete!",
+                            message: "Similarity Score: \(Int(similarityScore))%",
+                            preferredStyle: .alert
+                        )
+                        successAlert.addAction(UIAlertAction(title: "Continue", style: .default) { _ in
+                            // Hide the button and continue navigating (don't disconnect!)
+                            self?.reachedDestinationButton.isHidden = true
+                            self?.reachedDestinationButton.alpha = 0.0
+                        })
+                        successAlert.addAction(UIAlertAction(title: "Return to Selection", style: .cancel) { _ in
+                            // Only disconnect if user chooses to return
+                            self?.cleanupSession()
+                            // Ensure we're on main thread for UI operations
+                            DispatchQueue.main.async {
+                                if let navController = self?.navigationController {
+                                    navController.popViewController(animated: true)
+                                } else {
+                                    // If navigation controller is nil, try to dismiss
+                                    self?.dismiss(animated: true)
+                                }
+                            }
+                        })
+                        self?.present(successAlert, animated: true)
+
+                    } catch {
+                        NSLog("❌ Failed to parse response: \(error)")
+                        self?.showError("Failed to parse server response")
+                    }
+                }
+            }
+        }.resume()
+    }
+
+    private func showError(_ message: String) {
+        let alert = UIAlertController(title: "Error", message: message, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "OK", style: .default))
+        present(alert, animated: true)
+    }
+
+    // MARK: - FastAPI Server Discovery
+    private func discoverFastAPIServer() {
+        serviceBrowser = NetServiceBrowser()
+        serviceBrowser?.delegate = self
+        serviceBrowser?.searchForServices(ofType: "_uwbnav-fastapi._tcp.", inDomain: "local.")
+        NSLog("🔍 Searching for FastAPI server via Bonjour...")
+    }
+
+    // MARK: - NetServiceBrowserDelegate
+    func netServiceBrowser(_ browser: NetServiceBrowser, didFind service: NetService, moreComing: Bool) {
+        NSLog("📡 Found FastAPI service: \(service.name)")
+        fastAPIService = service
+        service.delegate = self
+        service.resolve(withTimeout: 5.0)
+    }
+
+    func netServiceBrowser(_ browser: NetServiceBrowser, didRemove service: NetService, moreComing: Bool) {
+        NSLog("📴 Lost FastAPI service: \(service.name)")
+        if service == fastAPIService {
+            fastAPIService = nil
+            fastAPIServerURL = "http://localhost:8000"  // Fallback
+        }
+    }
+
+    // MARK: - NetServiceDelegate
+    func netServiceDidResolveAddress(_ sender: NetService) {
+        guard let addresses = sender.addresses, !addresses.isEmpty else { return }
+
+        for addressData in addresses {
+            let socketAddress = addressData.withUnsafeBytes { bytes in
+                bytes.load(as: sockaddr_in.self)
+            }
+
+            if socketAddress.sin_family == AF_INET {
+                let ipAddress = String(cString: inet_ntoa(socketAddress.sin_addr))
+                let port = Int(socketAddress.sin_port.bigEndian)
+
+                fastAPIServerURL = "http://\(ipAddress):\(port)"
+                NSLog("✅ FastAPI server discovered at: \(fastAPIServerURL)")
+                break
+            }
+        }
+    }
+
+    func netService(_ sender: NetService, didNotResolve errorDict: [String : NSNumber]) {
+        NSLog("❌ Failed to resolve FastAPI service: \(errorDict)")
     }
 }

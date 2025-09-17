@@ -33,6 +33,8 @@
 	<string>UWB Navigator uses ultra-wideband technology to help you navigate to anchor points with precise distance and direction information.</string>
 	<key>NSNearbyInteractionUsageDescription</key>
 	<string>UWB Navigator uses ultra-wideband technology to provide precise indoor navigation between devices, showing real-time distance and direction to help you find your destination.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>This app needs camera access to take photos at destination locations for verification purposes.</string>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 	<key>UIBackgroundModes</key>
