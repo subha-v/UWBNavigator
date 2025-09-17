@@ -547,17 +547,13 @@ class NavigatorViewController: UIViewController, NISessionDelegate, UIImagePicke
             let anchorName = peer.displayName.replacingOccurrences(of: "anchor-", with: "")
             distances[anchorName] = distance
         }
-        
-        let navigatorData = [[
-            "id": UserSession.shared.userId ?? "unknown",
-            "name": UserSession.shared.displayName ?? UIDevice.current.name,
-            "targetAnchor": selectedAnchorName ?? "none",
-            "battery": Int(UIDevice.current.batteryLevel * 100),
-            "status": connectedAnchors.isEmpty ? "idle" : "active",
-            "connectedAnchors": connectedAnchors.count,
-            "distances": distances
-        ] as [String : Any]]
-        
+
+        let navigatorData = NavigatorAPIDataBuilder.buildData(
+            selectedAnchorName: selectedAnchorName,
+            connectedAnchorCount: connectedAnchors.count,
+            distances: distances
+        )
+
         APIServer.shared.updateNavigatorData(navigatorData)
     }
     
@@ -764,7 +760,7 @@ class NavigatorViewController: UIViewController, NISessionDelegate, UIImagePicke
     
     private func updatePresence(isOnline: Bool) {
         if let userId = UserSession.shared.userId {
-            FirebaseManager.shared.updateUserPresence(userId: userId, isOnline: isOnline)
+            FirebaseManager.shared.updateNavigatorPresence(userId: userId, isOnline: isOnline)
         }
     }
     

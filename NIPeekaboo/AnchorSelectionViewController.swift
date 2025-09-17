@@ -64,6 +64,7 @@ class AnchorSelectionViewController: UIViewController {
     // MARK: - Data
     private var availableAnchors: [(id: String, name: String)] = []
     private var isLoading = false
+    private var hasMarkedNavigatorOffline = false // Prevents duplicate offline updates
     
     // MARK: - Lifecycle
     override func viewDidLoad() {
@@ -76,7 +77,18 @@ class AnchorSelectionViewController: UIViewController {
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         navigationController?.setNavigationBarHidden(false, animated: animated)
+        hasMarkedNavigatorOffline = false
+        updateNavigatorPresence(isOnline: true)
+        updateNavigatorIdleState()
         loadAvailableAnchors()
+    }
+
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+
+        if isBeingDismissed || navigationController?.isBeingDismissed == true || isMovingFromParent {
+            handleNavigatorDismissal()
+        }
     }
     
     // MARK: - Setup
@@ -173,6 +185,7 @@ class AnchorSelectionViewController: UIViewController {
     }
     
     private func performLogout() {
+        handleNavigatorDismissal()
         FirebaseManager.shared.signOut { [weak self] _ in
             DispatchQueue.main.async {
                 self?.dismiss(animated: true)
@@ -194,6 +207,38 @@ class AnchorSelectionViewController: UIViewController {
         let alert = UIAlertController(title: "Error", message: message, preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: "OK", style: .default))
         present(alert, animated: true)
+    }
+
+    private func updateNavigatorPresence(isOnline: Bool) {
+        guard let userId = UserSession.shared.userId, !hasMarkedNavigatorOffline || isOnline else { return }
+        if isOnline {
+            FirebaseManager.shared.updateNavigatorPresence(userId: userId, isOnline: true)
+            hasMarkedNavigatorOffline = false
+        } else {
+            FirebaseManager.shared.updateNavigatorPresence(userId: userId, isOnline: false)
+            hasMarkedNavigatorOffline = true
+        }
+    }
+
+    private func updateNavigatorIdleState() {
+        guard UserSession.shared.userRole == .navigator,
+              UserSession.shared.userId != nil else {
+            APIServer.shared.clearNavigatorData()
+            return
+        }
+
+        let navigatorData = NavigatorAPIDataBuilder.buildData(
+            selectedAnchorName: nil,
+            connectedAnchorCount: 0,
+            distances: [:],
+            statusOverride: "idle"
+        )
+        APIServer.shared.updateNavigatorData(navigatorData)
+    }
+
+    private func handleNavigatorDismissal() {
+        updateNavigatorPresence(isOnline: false)
+        APIServer.shared.clearNavigatorData()
     }
 }
 

@@ -228,6 +228,19 @@ class FirebaseManager {
             }
         }
     }
+
+    func updateNavigatorPresence(userId: String, isOnline: Bool) {
+        let data: [String: Any] = [
+            "isOnline": isOnline,
+            "lastSeen": FieldValue.serverTimestamp(),
+            "lastActive": FieldValue.serverTimestamp()
+        ]
+        db.collection("users").document(userId).updateData(data) { error in
+            if let error = error {
+                print("Error updating navigator presence: \(error)")
+            }
+        }
+    }
     
     func updateBatteryLevel(userId: String, batteryLevel: Float) {
         let data: [String: Any] = [
