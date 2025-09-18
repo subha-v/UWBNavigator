@@ -710,6 +710,59 @@ async def get_diagnostics():
 
 # Image similarity endpoint removed - moved to similarity_server.py
 
+@app.post("/api/navigator-completed")
+async def navigator_completed(data: dict):
+    """Handle navigator completion and create smart contract"""
+    try:
+        logger.info(f"📱 Navigator completed: {data}")
+
+        # Create smart contract data
+        contract = {
+            "txId": f"tx_{datetime.now().strftime('%Y%m%d%H%M%S')}_{data.get('navigator_id', 'unknown')[:8]}",
+            "navigatorId": data.get("navigator_id"),
+            "navigatorName": data.get("navigator_name", "Unknown Navigator"),
+            "anchorPhone": data.get("anchor_destination", "Unknown Anchor"),
+            "price": 15,
+            "currency": "USDC",
+            "status": "Settled",
+            "timestamp": data.get("timestamp", datetime.now().isoformat())
+        }
+
+        # Broadcast to WebSocket clients
+        await broadcast_to_websockets({
+            "type": "navigator_completed",
+            "contract": contract,
+            "timestamp": datetime.now().isoformat()
+        })
+
+        # Send to webapp
+        async with httpx.AsyncClient() as client:
+            try:
+                webapp_response = await client.post(
+                    "http://localhost:3001/api/navigator-update",
+                    json={
+                        "type": "navigator_completed",
+                        "contract": contract
+                    },
+                    timeout=5.0
+                )
+                logger.info(f"✅ Sent contract to webapp: {webapp_response.status_code}")
+            except Exception as e:
+                logger.warning(f"⚠️ Could not send to webapp: {e}")
+
+        return {
+            "success": True,
+            "message": "Navigator completion recorded",
+            "contract": contract
+        }
+
+    except Exception as e:
+        logger.error(f"❌ Error handling navigator completion: {e}")
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     """WebSocket endpoint for real-time updates"""
