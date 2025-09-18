@@ -1,0 +1,53 @@
+2025-09-17 15:36:22,534 - __main__ - INFO - 🔍 Checking for existing processes on port 8001...
+2025-09-17 15:36:23,071 - __main__ - INFO - 🚀 Starting Similarity Server on port 8001...
+2025-09-17 15:36:23,071 - __main__ - INFO - 📍 Server will be available at http://localhost:8001
+2025-09-17 15:36:23,071 - __main__ - INFO - 📸 Similarity endpoint: http://localhost:8001/api/similarity
+2025-09-17 15:36:33,881 - __main__ - ERROR - Failed to advertise service via Bonjour: 
+2025-09-17 15:36:37,920 - __main__ - INFO - 🧪 Testing similarity for location: Kitchen
+2025-09-17 15:36:49,885 - __main__ - INFO - 🧪 Testing similarity for location: Meeting Room
+2025-09-17 15:36:56,708 - __main__ - INFO - 🧪 Testing similarity for location: Window
+2025-09-17 15:37:06,032 - __main__ - INFO - 📸 Received similarity request from Test Navigator (ID: test_navigator_001) for location: Kitchen
+2025-09-17 15:37:11,714 - __main__ - INFO - ✅ Calculated similarity: 100.0% for Test Navigator at Kitchen
+2025-09-17 15:37:11,732 - __main__ - WARNING - ⚠️ Could not connect to webapp at http://localhost:3000/api/navigator-update
+2025-09-17 15:37:12,381 - __main__ - INFO - 📸 Received base64 similarity request from Swift Test Navigator for location: Window
+2025-09-17 15:37:19,446 - __main__ - INFO - ✅ Calculated similarity: 100.0% for Swift Test Navigator at Window
+2025-09-17 15:37:19,467 - __main__ - WARNING - ⚠️ Could not connect to webapp at http://localhost:3000/api/navigator-update
+2025-09-17 15:37:19,475 - __main__ - INFO - 📸 Received similarity request from Cross Test Navigator (ID: cross_test_001) for location: Meeting Room
+2025-09-17 15:37:26,714 - __main__ - INFO - ✅ Calculated similarity: 71.5% for Cross Test Navigator at Meeting Room
+2025-09-17 15:37:26,749 - __main__ - WARNING - ⚠️ Could not connect to webapp at http://localhost:3000/api/navigator-update
+2025-09-17 15:37:26,756 - __main__ - INFO - 📸 Received similarity request from Cross Test Navigator (ID: cross_test_001) for location: Window
+2025-09-17 15:37:33,576 - __main__ - INFO - ✅ Calculated similarity: 74.5% for Cross Test Navigator at Window
+2025-09-17 15:37:33,594 - __main__ - WARNING - ⚠️ Could not connect to webapp at http://localhost:3000/api/navigator-update
+2025-09-17 15:37:33,605 - __main__ - INFO - 📸 Received similarity request from Cross Test Navigator (ID: cross_test_001) for location: Kitchen
+2025-09-17 15:37:41,003 - __main__ - INFO - ✅ Calculated similarity: 66.7% for Cross Test Navigator at Kitchen
+2025-09-17 15:37:41,022 - __main__ - WARNING - ⚠️ Could not connect to webapp at http://localhost:3000/api/navigator-update
+2025-09-17 15:38:05,495 - __main__ - INFO - 🧪 Testing similarity for location: Kitchen
+2025-09-17 16:08:21,407 - __main__ - INFO - 🔍 Checking for existing processes on port 8001...
+2025-09-17 16:08:21,946 - __main__ - INFO - 🚀 Starting Similarity Server on port 8001...
+2025-09-17 16:08:21,946 - __main__ - INFO - 📍 Server will be available at http://localhost:8001
+2025-09-17 16:08:21,946 - __main__ - INFO - 📸 Similarity endpoint: http://localhost:8001/api/similarity
+2025-09-17 16:08:32,668 - __main__ - ERROR - Failed to advertise service via Bonjour: 
+2025-09-17 16:09:01,418 - __main__ - INFO - 🧪 Testing similarity for location: Kitchen
+2025-09-17 16:17:38,616 - __main__ - INFO - 🔍 Checking for existing processes on port 8001...
+2025-09-17 16:17:39,133 - __main__ - INFO - 🚀 Starting Similarity Server on port 8001...
+2025-09-17 16:17:39,133 - __main__ - INFO - 📍 Server will be available at http://localhost:8001
+2025-09-17 16:17:39,134 - __main__ - INFO - 📸 Similarity endpoint: http://localhost:8001/api/similarity
+2025-09-17 16:17:49,862 - __main__ - ERROR - Failed to advertise service via Bonjour: 
+2025-09-17 16:20:39,427 - __main__ - INFO - 📸 Received similarity request from adpatil989 (ID: lTgHZ1VtdHM2EEPqpDLsPER1gnJ2) for location: Kitchen
+2025-09-17 16:20:41,070 - __main__ - ERROR - Error in similarity calculation: SigLIP requires 'torch' and 'transformers'. Please run: pip install -r requirements.txt
+2025-09-17 16:22:49,308 - __main__ - INFO - 🔍 Checking for existing processes on port 8001...
+2025-09-17 16:22:49,844 - __main__ - INFO - 🚀 Starting Similarity Server on port 8001...
+2025-09-17 16:22:49,845 - __main__ - INFO - 📍 Server will be available at http://localhost:8001
+2025-09-17 16:22:49,845 - __main__ - INFO - 📸 Similarity endpoint: http://localhost:8001/api/similarity
+2025-09-17 16:23:00,562 - __main__ - WARNING - ⚠️ Bonjour advertisement failed: 
+2025-09-17 16:23:00,563 - __main__ - INFO - But server will still accept direct connections!
+2025-09-17 16:23:00,563 - __main__ - INFO - 📍 Connect directly at http://10.1.10.206:8001/api/similarity
+2025-09-17 16:23:06,496 - __main__ - INFO - 🧪 Testing similarity for location: Kitchen
+2025-09-17 16:24:15,380 - __main__ - INFO - 🔍 Checking for existing processes on port 8001...
+2025-09-17 16:24:15,410 - __main__ - INFO - Killed process 17681 using port 8001
+2025-09-17 16:24:15,915 - __main__ - INFO - 🚀 Starting Similarity Server on port 8001...
+2025-09-17 16:24:15,915 - __main__ - INFO - 📍 Server will be available at http://localhost:8001
+2025-09-17 16:24:15,915 - __main__ - INFO - 📸 Similarity endpoint: http://localhost:8001/api/similarity
+2025-09-17 16:24:26,634 - __main__ - WARNING - ⚠️ Bonjour advertisement failed: 
+2025-09-17 16:24:26,635 - __main__ - INFO - But server will still accept direct connections!
+2025-09-17 16:24:26,635 - __main__ - INFO - 📍 Connect directly at http://10.1.10.206:8001/api/similarity

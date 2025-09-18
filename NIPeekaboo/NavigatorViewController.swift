@@ -122,7 +122,19 @@ class NavigatorViewController: UIViewController, NISessionDelegate {
         button.translatesAutoresizingMaskIntoConstraints = false
         return button
     }()
-    
+
+    private let reachedDestinationButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setTitle("Reached Destination", for: .normal)
+        button.backgroundColor = .systemGreen
+        button.setTitleColor(.white, for: .normal)
+        button.titleLabel?.font = UIFont.systemFont(ofSize: 18, weight: .semibold)
+        button.layer.cornerRadius = 25
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.isHidden = true // Initially hidden
+        return button
+    }()
+
     // MARK: - NearbyInteraction Properties
     private var sessions: [MCPeerID: NISession] = [:]
     private var peerTokens: [MCPeerID: NIDiscoveryToken] = [:]
@@ -133,6 +145,8 @@ class NavigatorViewController: UIViewController, NISessionDelegate {
     private let nearbyDistanceThreshold: Float = 0.3
     private var measurementTimer: Timer?
     private var batteryTimer: Timer?
+    private var isCleaningUp = false
+    private let cleanupLock = NSLock()
     
     // MARK: - Navigation Properties
     var selectedAnchorId: String?
@@ -165,16 +179,33 @@ class NavigatorViewController: UIViewController, NISessionDelegate {
     
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
+
+        // Set cleanup flag to prevent any new async operations
+        cleanupLock.lock()
+        isCleaningUp = true
+        cleanupLock.unlock()
+
+        // Cancel all pending operations
+        NSObject.cancelPreviousPerformRequests(withTarget: self)
+
         updatePresence(isOnline: false)
-        
+
         // Perform thorough cleanup when leaving this view
         cleanupSession()
-        
+
         // Clear API data when leaving navigator mode
         APIServer.shared.clearNavigatorData()
     }
     
     deinit {
+        // Set cleanup flag
+        cleanupLock.lock()
+        isCleaningUp = true
+        cleanupLock.unlock()
+
+        // Cancel all pending operations
+        NSObject.cancelPreviousPerformRequests(withTarget: self)
+
         // Ensure cleanup happens even if view lifecycle methods aren't called properly
         cleanupSession()
         APIServer.shared.clearNavigatorData()
@@ -196,7 +227,8 @@ class NavigatorViewController: UIViewController, NISessionDelegate {
         view.addSubview(arrowView)
         view.addSubview(detailContainer)
         view.addSubview(disconnectButton)
-        
+        view.addSubview(reachedDestinationButton)
+
         // Setup detail container subviews
         detailContainer.addSubview(distanceLabel)
         detailContainer.addSubview(azimuthLabel)
@@ -258,15 +290,22 @@ class NavigatorViewController: UIViewController, NISessionDelegate {
             
             // Disconnect Button
             disconnectButton.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -30),
-            disconnectButton.centerXAnchor.constraint(equalTo: view.centerXAnchor)
+            disconnectButton.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+
+            // Reached Destination Button
+            reachedDestinationButton.bottomAnchor.constraint(equalTo: disconnectButton.topAnchor, constant: -20),
+            reachedDestinationButton.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            reachedDestinationButton.widthAnchor.constraint(equalToConstant: 250),
+            reachedDestinationButton.heightAnchor.constraint(equalToConstant: 50)
         ])
-        
+
         // Initially hide detail container
         detailContainer.alpha = 0
     }
-    
+
     private func setupActions() {
         disconnectButton.addTarget(self, action: #selector(disconnectTapped), for: .touchUpInside)
+        reachedDestinationButton.addTarget(self, action: #selector(reachedDestinationTapped), for: .touchUpInside)
     }
     
     // MARK: - Navigator Mode
@@ -454,6 +493,14 @@ class NavigatorViewController: UIViewController, NISessionDelegate {
     }
     
     private func startMeasurementTimer() {
+        // Check if we're cleaning up before starting timer
+        cleanupLock.lock()
+        guard !isCleaningUp else {
+            cleanupLock.unlock()
+            return
+        }
+        cleanupLock.unlock()
+
         measurementTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
             self?.updateDistanceTracking()
         }
@@ -508,27 +555,29 @@ class NavigatorViewController: UIViewController, NISessionDelegate {
     // MARK: - API Data Update
     private func updateAPIData() {
         // Only update if user is actually in navigator role
-        guard UserSession.shared.userRole == .navigator else { 
+        guard UserSession.shared.userRole == .navigator else {
             APIServer.shared.clearNavigatorData()
-            return 
+            return
         }
-        
+
         var distances: [String: Float] = [:]
+        var anchorNames: [String] = []
         for (peer, distance) in anchorDistances {
             let anchorName = peer.displayName.replacingOccurrences(of: "anchor-", with: "")
             distances[anchorName] = distance
+            anchorNames.append(anchorName)
         }
         
-        let navigatorData = [[
-            "id": UserSession.shared.userId ?? "unknown",
-            "name": UserSession.shared.displayName ?? UIDevice.current.name,
-            "targetAnchor": selectedAnchorName ?? "none",
-            "battery": Int(UIDevice.current.batteryLevel * 100),
-            "status": connectedAnchors.isEmpty ? "idle" : "active",
-            "connectedAnchors": connectedAnchors.count,
-            "distances": distances
-        ] as [String : Any]]
-        
+        // Get similarity score
+        let similarityScore = APIServer.shared.similarityScore
+
+        // Use NavigatorAPIDataBuilder for consistent data structure
+        let navigatorData = NavigatorAPIDataBuilder.buildActiveNavigatorData(
+            connectedAnchors: anchorNames,
+            distances: distances,
+            similarityScore: similarityScore
+        )
+
         APIServer.shared.updateNavigatorData(navigatorData)
     }
     
@@ -658,6 +707,12 @@ class NavigatorViewController: UIViewController, NISessionDelegate {
         if state == .closeUpInFOV && currentDistanceDirectionState != .closeUpInFOV {
             arrowView.triggerHapticFeedback()
         }
+
+        // Show/hide "Reached Destination" button based on distance state
+        UIView.animate(withDuration: 0.3) {
+            self.reachedDestinationButton.isHidden = state != .closeUpInFOV
+            self.reachedDestinationButton.alpha = state == .closeUpInFOV ? 1.0 : 0.0
+        }
     }
     
     private func updateDirectionIndicators(azimuth: Float, elevation: Float) {
@@ -692,8 +747,24 @@ class NavigatorViewController: UIViewController, NISessionDelegate {
     
     // MARK: - Helper Methods
     private func updateStatus(_ text: String) {
+        // Check if we're cleaning up to avoid crashes
+        cleanupLock.lock()
+        let shouldUpdate = !isCleaningUp
+        cleanupLock.unlock()
+
+        guard shouldUpdate else { return }
+
         DispatchQueue.main.async { [weak self] in
-            self?.statusLabel.text = text
+            guard let self = self else { return }
+
+            // Double-check we're not cleaning up
+            self.cleanupLock.lock()
+            let stillSafe = !self.isCleaningUp
+            self.cleanupLock.unlock()
+
+            if stillSafe {
+                self.statusLabel.text = text
+            }
         }
     }
     
@@ -726,23 +797,31 @@ class NavigatorViewController: UIViewController, NISessionDelegate {
     
     private func updatePresence(isOnline: Bool) {
         if let userId = UserSession.shared.userId {
-            FirebaseManager.shared.updateUserPresence(userId: userId, isOnline: isOnline)
+            // Use the new updateNavigatorPresence method that sets both lastSeen and lastActive
+            FirebaseManager.shared.updateNavigatorPresence(userId: userId, isOnline: isOnline)
         }
     }
     
     private func cleanupSession() {
+        // Invalidate timers first to stop any recurring operations
         measurementTimer?.invalidate()
         measurementTimer = nil
-        
+
         batteryTimer?.invalidate()
         batteryTimer = nil
-        
+
+        // Cancel any pending dispatch operations
+        DispatchQueue.main.sync { [weak self] in
+            guard self != nil else { return }
+            NSObject.cancelPreviousPerformRequests(withTarget: self as Any)
+        }
+
         DistanceErrorTracker.shared.endSession()
-        
+
         // Clear all NI sessions
         sessions.values.forEach { $0.invalidate() }
         sessions.removeAll()
-        
+
         // Reset anchor tracking state
         connectedAnchors.removeAll()
         anchorDistances.removeAll()
@@ -790,6 +869,14 @@ class NavigatorViewController: UIViewController, NISessionDelegate {
     }
     
     @objc private func disconnectTapped() {
+        // Check if we're cleaning up
+        cleanupLock.lock()
+        guard !isCleaningUp else {
+            cleanupLock.unlock()
+            return
+        }
+        cleanupLock.unlock()
+
         let alert = UIAlertController(title: "Disconnect", message: "Are you sure you want to disconnect from this anchor?", preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
         alert.addAction(UIAlertAction(title: "Disconnect", style: .destructive) { [weak self] _ in
@@ -797,5 +884,82 @@ class NavigatorViewController: UIViewController, NISessionDelegate {
             self?.navigationController?.popViewController(animated: true)
         })
         present(alert, animated: true)
+    }
+
+    @objc private func reachedDestinationTapped() {
+        // Check if we're cleaning up
+        cleanupLock.lock()
+        guard !isCleaningUp else {
+            cleanupLock.unlock()
+            return
+        }
+        cleanupLock.unlock()
+
+        // Send completion notification to server
+        sendNavigatorCompletion()
+
+        // Show success alert
+        let alert = UIAlertController(
+            title: "Destination Reached! ✅",
+            message: "Great job! You've successfully reached your destination.",
+            preferredStyle: .alert
+        )
+        alert.addAction(UIAlertAction(title: "OK", style: .default) { [weak self] _ in
+            // Clean up session and return to anchor selection
+            self?.cleanupSession()
+            self?.navigationController?.popViewController(animated: true)
+        })
+        present(alert, animated: true)
+    }
+
+    private func sendNavigatorCompletion() {
+        // Check if we're cleaning up
+        cleanupLock.lock()
+        guard !isCleaningUp else {
+            cleanupLock.unlock()
+            return
+        }
+        cleanupLock.unlock()
+
+        // Get FastAPI server URL
+        let apiUrl = APIServer.shared.getFastAPIServerURL()
+        guard let url = URL(string: "\(apiUrl)/api/navigator-completed") else { return }
+
+        // Create completion data
+        let completionData: [String: Any] = [
+            "navigator_id": UserSession.shared.userId ?? "unknown",
+            "navigator_name": UserSession.shared.displayName ?? "Navigator",
+            "anchor_destination": selectedAnchorName ?? "Unknown",
+            "timestamp": ISO8601DateFormatter().string(from: Date()),
+            "status": "completed"
+        ]
+
+        // Send POST request
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        do {
+            request.httpBody = try JSONSerialization.data(withJSONObject: completionData)
+        } catch {
+            print("❌ Error creating completion request: \(error)")
+            return
+        }
+
+        let task = URLSession.shared.dataTask(with: request) { data, response, error in
+            if let error = error {
+                print("❌ Error sending navigator completion: \(error)")
+                return
+            }
+
+            if let httpResponse = response as? HTTPURLResponse {
+                if httpResponse.statusCode == 200 {
+                    print("✅ Navigator completion sent successfully")
+                } else {
+                    print("⚠️ Server returned status code: \(httpResponse.statusCode)")
+                }
+            }
+        }
+        task.resume()
     }
 }

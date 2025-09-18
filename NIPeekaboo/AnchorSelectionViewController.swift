@@ -70,12 +70,24 @@ class AnchorSelectionViewController: UIViewController {
         super.viewDidLoad()
         setupUI()
         setupTableView()
+
+        // Set navigator online and publish data on initial load
+        updateNavigatorPresence(isOnline: true)
+        publishIdleNavigatorData()
+
         loadAvailableAnchors()
     }
     
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         navigationController?.setNavigationBarHidden(false, animated: animated)
+
+        // Update navigator presence to show as online with lastActive
+        updateNavigatorPresence(isOnline: true)
+
+        // Publish idle navigator data to API server
+        publishIdleNavigatorData()
+
         loadAvailableAnchors()
     }
     
@@ -172,7 +184,28 @@ class AnchorSelectionViewController: UIViewController {
         present(alert, animated: true)
     }
     
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+
+        // Only clear if we're not navigating to NavigatorViewController
+        if !isMovingToNavigator {
+            // Set navigator offline
+            updateNavigatorPresence(isOnline: false)
+
+            // Clear API data
+            APIServer.shared.clearNavigatorData()
+        }
+    }
+
+    private var isMovingToNavigator = false
+
     private func performLogout() {
+        // Set navigator offline before logout
+        updateNavigatorPresence(isOnline: false)
+
+        // Clear API data
+        APIServer.shared.clearNavigatorData()
+
         FirebaseManager.shared.signOut { [weak self] _ in
             DispatchQueue.main.async {
                 self?.dismiss(animated: true)
@@ -182,7 +215,10 @@ class AnchorSelectionViewController: UIViewController {
     
     private func navigateToAnchor(anchorId: String, anchorName: String) {
         UserSession.shared.selectedAnchorId = anchorId
-        
+
+        // Mark that we're moving to navigator
+        isMovingToNavigator = true
+
         let navigatorVC = NavigatorViewController()
         navigatorVC.selectedAnchorId = anchorId
         navigatorVC.selectedAnchorName = anchorName
@@ -190,6 +226,25 @@ class AnchorSelectionViewController: UIViewController {
     }
     
     // MARK: - Helper Methods
+    private func updateNavigatorPresence(isOnline: Bool) {
+        if let userId = UserSession.shared.userId {
+            // Use the new method that updates both lastSeen and lastActive
+            FirebaseManager.shared.updateNavigatorPresence(userId: userId, isOnline: isOnline)
+        }
+    }
+
+    private func publishIdleNavigatorData() {
+        // Only publish if user is actually in navigator role
+        guard UserSession.shared.userRole == .navigator else {
+            APIServer.shared.clearNavigatorData()
+            return
+        }
+
+        // Use NavigatorAPIDataBuilder for consistent idle data
+        let navigatorData = NavigatorAPIDataBuilder.buildIdleNavigatorData()
+        APIServer.shared.updateNavigatorData(navigatorData)
+    }
+
     private func showError(_ message: String) {
         let alert = UIAlertController(title: "Error", message: message, preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: "OK", style: .default))

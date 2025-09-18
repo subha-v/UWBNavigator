@@ -23,6 +23,7 @@
 		1774E0502E627C7600F531A8 /* UserSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1774E04B2E627C7600F531A8 /* UserSession.swift */; };
 		17D2B9D12E69150500FEBECC /* Swifter in Frameworks */ = {isa = PBXBuildFile; productRef = 17D2B9D02E69150500FEBECC /* Swifter */; };
 		17D2B9D32E69153100FEBECC /* APIServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17D2B9D22E69153100FEBECC /* APIServer.swift */; };
+		17D2B9D42E69153200FEBECC /* NavigatorAPIDataBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17D2B9D52E69153200FEBECC /* NavigatorAPIDataBuilder.swift */; };
 		17FF45D52E68BA3B004726AD /* DistanceErrorTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17FF45D42E68BA3B004726AD /* DistanceErrorTracker.swift */; };
 		71418B3224949358007DAB1C /* README.md in Resources */ = {isa = PBXBuildFile; fileRef = 71418B3124949358007DAB1C /* README.md */; };
 		AD026E6B248E77B10016A2B6 /* MPCSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD026E6A248E77B10016A2B6 /* MPCSession.swift */; };
@@ -48,6 +49,7 @@
 		1774E04A2E627C7600F531A8 /* SignUpViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SignUpViewController.swift; sourceTree = "<group>"; };
 		1774E04B2E627C7600F531A8 /* UserSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserSession.swift; sourceTree = "<group>"; };
 		17D2B9D22E69153100FEBECC /* APIServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIServer.swift; sourceTree = "<group>"; };
+		17D2B9D52E69153200FEBECC /* NavigatorAPIDataBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NavigatorAPIDataBuilder.swift; sourceTree = "<group>"; };
 		17FF45D42E68BA3B004726AD /* DistanceErrorTracker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DistanceErrorTracker.swift; sourceTree = "<group>"; };
 		43D6B566D60E1D86FC1BA04C /* SampleCode.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = SampleCode.xcconfig; path = Configuration/SampleCode.xcconfig; sourceTree = "<group>"; };
 		62C8A7F1105E38E9FB343714 /* LICENSE.txt */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text; path = LICENSE.txt; sourceTree = "<group>"; };
@@ -139,6 +141,7 @@
 			isa = PBXGroup;
 			children = (
 				17D2B9D22E69153100FEBECC /* APIServer.swift */,
+				17D2B9D52E69153200FEBECC /* NavigatorAPIDataBuilder.swift */,
 				17FF45D42E68BA3B004726AD /* DistanceErrorTracker.swift */,
 				17578EC32E67C6F000C32B91 /* AdminUpdateViewController.swift */,
 				1774E0462E627C7600F531A8 /* LoginViewController.swift */,
@@ -249,6 +252,7 @@
 				1774E0432E627C5600F531A8 /* AnchorViewController.swift in Sources */,
 				ADDB28FE24897F7D00F72056 /* AppDelegate.swift in Sources */,
 				17D2B9D32E69153100FEBECC /* APIServer.swift in Sources */,
+				17D2B9D42E69153200FEBECC /* NavigatorAPIDataBuilder.swift in Sources */,
 				1774E04C2E627C7600F531A8 /* NavigatorViewController.swift in Sources */,
 				1774E04E2E627C7600F531A8 /* LoginViewController.swift in Sources */,
 				1774E04F2E627C7600F531A8 /* SignUpViewController.swift in Sources */,

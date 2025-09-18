@@ -229,6 +229,20 @@ class FirebaseManager {
         }
     }
     
+    // New method that updates both lastSeen and lastActive for navigator visibility
+    func updateNavigatorPresence(userId: String, isOnline: Bool) {
+        let data: [String: Any] = [
+            "isOnline": isOnline,
+            "lastSeen": FieldValue.serverTimestamp(),
+            "lastActive": FieldValue.serverTimestamp()  // This ensures navigator shows as online
+        ]
+        db.collection("users").document(userId).updateData(data) { error in
+            if let error = error {
+                print("Error updating navigator presence: \(error)")
+            }
+        }
+    }
+
     func updateBatteryLevel(userId: String, batteryLevel: Float) {
         let data: [String: Any] = [
             "battery": Int(batteryLevel * 100),

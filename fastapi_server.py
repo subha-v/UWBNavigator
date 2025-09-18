@@ -682,6 +682,88 @@ async def get_diagnostics():
     
     return diagnostics
 
+@app.post("/api/navigator-completed")
+async def navigator_completed(request: dict):
+    """Handle navigator completion notification"""
+    try:
+        logger.info(f"✅ Navigator completed journey: {request.get('navigator_name')} at {request.get('anchor_destination')}")
+
+        # Generate transaction ID
+        tx_id = f"0x{int(time.time() * 1000) % 100000000:08x}"
+
+        # Create smart contract data
+        contract_data = {
+            "txId": tx_id,
+            "navigatorId": request.get("navigator_name", "Navigator"),
+            "anchorPhone": request.get("anchor_destination", "Unknown"),
+            "anchors": [request.get("anchor_destination", "Unknown")],
+            "asset": "Navigation completed",
+            "price": 15,
+            "currency": "USDC",
+            "status": "Settled",
+            "qodQuorum": "Pass",
+            "timestamp": request.get("timestamp", datetime.now().isoformat()),
+            "dop": 1.5,
+            "minAnchors": 1,
+            "actualAnchors": 1
+        }
+
+        # Broadcast to WebSocket clients
+        message = {
+            'type': 'navigator_completed',
+            'data': {
+                'navigator_id': request.get('navigator_id'),
+                'navigator_name': request.get('navigator_name'),
+                'anchor_destination': request.get('anchor_destination'),
+                'contract': contract_data,
+                'timestamp': request.get('timestamp')
+            }
+        }
+
+        disconnected = []
+        with websocket_clients_lock:
+            for client in websocket_clients:
+                try:
+                    await client.send_json(message)
+                except:
+                    disconnected.append(client)
+
+        # Clean up disconnected clients
+        for client in disconnected:
+            websocket_clients.remove(client)
+
+        # Also send to webapp API
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                webapp_response = await client.post(
+                    "http://localhost:3001/api/navigator-update",
+                    json={
+                        "type": "navigator_completed",
+                        "navigator_id": request.get("navigator_id"),
+                        "navigator_name": request.get("navigator_name"),
+                        "anchor_destination": request.get("anchor_destination"),
+                        "contract": contract_data,
+                        "timestamp": request.get("timestamp")
+                    }
+                )
+                if webapp_response.status_code == 200:
+                    logger.info("📡 Notified webapp of navigator completion")
+        except Exception as e:
+            logger.warning(f"Could not notify webapp: {e}")
+
+        return JSONResponse({
+            "success": True,
+            "message": "Navigator completion recorded",
+            "contract": contract_data
+        })
+
+    except Exception as e:
+        logger.error(f"Error handling navigator completion: {e}")
+        return JSONResponse(
+            {"success": False, "error": str(e)},
+            status_code=500
+        )
+
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     """WebSocket endpoint for real-time updates"""

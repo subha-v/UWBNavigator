@@ -25,6 +25,7 @@ class APIServer: NSObject {
     var anchorData: [[String: Any]] = []
     var navigatorData: [[String: Any]] = []
     var distanceData: [String: Any] = [:]
+    var similarityScore: Int? = nil
     
     private override init() {
         super.init()
@@ -344,7 +345,13 @@ class APIServer: NSObject {
     func clearNavigatorData() {
         navigatorData = []
     }
-    
+
+    func getFastAPIServerURL() -> String {
+        // Return the FastAPI server URL
+        // This could be configurable, but for now we'll use the standard localhost
+        return "http://localhost:8000"
+    }
+
     // MARK: - Helper Methods
     
     private func getWiFiAddress() -> String? {
