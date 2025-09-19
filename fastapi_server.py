@@ -491,7 +491,9 @@ def calculate_qod(device_data: Dict[str, Any], max_error: float = 0.20, w_acc: f
     # Calculate accuracy score using median of errors
     # Scale: 0% error = 100 score, max_error (20%) = 0 score
     typical_error = median(errors)
-    accuracy_score = 100.0 * max(0.0, 1.0 - (typical_error / max_error))
+    # Convert typical_error from percentage to decimal (e.g., 1301.12 -> 13.0112)
+    typical_error_decimal = typical_error / 100.0
+    accuracy_score = 100.0 * max(0.0, 1.0 - (typical_error_decimal / max_error))
     accuracy_score = max(0, min(100, accuracy_score))
 
     # Battery score (directly use battery percentage)
@@ -506,7 +508,7 @@ def calculate_qod(device_data: Dict[str, Any], max_error: float = 0.20, w_acc: f
     qod = w_acc * accuracy_score + w_batt * battery_score
 
     # Log the calculation details for debugging
-    logger.debug(f"  Error: {typical_error*100:.2f}%, Accuracy Score: {accuracy_score:.1f}, Battery: {battery_score:.1f}%, QoD: {qod:.1f}")
+    logger.debug(f"  Error: {typical_error:.2f}%, Accuracy Score: {accuracy_score:.1f}, Battery: {battery_score:.1f}%, QoD: {qod:.1f}")
 
     return round(max(0, min(100, qod)))
 
