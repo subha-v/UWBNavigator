@@ -152,7 +152,7 @@ class NavigatorViewController: UIViewController, NISessionDelegate, NetServiceBr
 
     // MARK: - Server Discovery
     // Use your Mac's IP address for testing (update this when your IP changes)
-    private var fastAPIServerURL: String = "http://10.103.136.31:8000"
+    private var fastAPIServerURL: String = "http://10.1.10.206:8000"
     private var serviceBrowser: NetServiceBrowser?
     private var fastAPIService: NetService?
     
@@ -994,7 +994,7 @@ class NavigatorViewController: UIViewController, NISessionDelegate, NetServiceBr
         NSLog("📴 Lost FastAPI service: \(service.name)")
         if service == fastAPIService {
             fastAPIService = nil
-            fastAPIServerURL = "http://10.103.136.31:8000"  // Fallback
+            fastAPIServerURL = "http://10.1.10.206:8000"  // Fallback
         }
     }
 
