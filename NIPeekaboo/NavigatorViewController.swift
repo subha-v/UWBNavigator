@@ -10,7 +10,7 @@ import NearbyInteraction
 import MultipeerConnectivity
 import Firebase
 
-class NavigatorViewController: UIViewController, NISessionDelegate, UIImagePickerControllerDelegate, UINavigationControllerDelegate, NetServiceBrowserDelegate, NetServiceDelegate {
+class NavigatorViewController: UIViewController, NISessionDelegate, NetServiceBrowserDelegate, NetServiceDelegate {
     
     // MARK: - UI Components
     private let arrowView: ArrowView = {
@@ -838,45 +838,21 @@ class NavigatorViewController: UIViewController, NISessionDelegate, UIImagePicke
     }
 
     @objc private func reachedDestinationTapped() {
-        // Present camera to take photo
-        let imagePicker = UIImagePickerController()
-        imagePicker.delegate = self
-        imagePicker.sourceType = .camera
-        imagePicker.allowsEditing = false
-        present(imagePicker, animated: true)
+        // Send completion notification directly without photo
+        sendNavigatorCompletion()
     }
 
-    // MARK: - UIImagePickerControllerDelegate
-    func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey : Any]) {
-        picker.dismiss(animated: true)
-
-        guard let image = info[.originalImage] as? UIImage else { return }
-
-        // Send photo to server for similarity calculation
-        sendPhotoToServer(image: image)
-    }
-
-    func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
-        picker.dismiss(animated: true)
-    }
-
-    // MARK: - Photo Submission
-    private func sendPhotoToServer(image: UIImage) {
+    // MARK: - Navigator Completion
+    private func sendNavigatorCompletion() {
         // Show loading indicator
-        let loadingAlert = UIAlertController(title: "Processing", message: "Calculating similarity score...", preferredStyle: .alert)
+        let loadingAlert = UIAlertController(title: "Processing", message: "Sending completion notification...", preferredStyle: .alert)
         present(loadingAlert, animated: true)
 
-        // Convert image to JPEG data
-        guard let imageData = image.jpegData(compressionQuality: 0.8) else {
-            loadingAlert.dismiss(animated: true)
-            return
-        }
-
         // Use discovered FastAPI server URL (or fallback to hardcoded IP)
-        let apiUrl = "\(fastAPIServerURL)/api/similarity"
+        let apiUrl = "\(fastAPIServerURL)/api/navigator-completed"
         NSLog("📡 Using FastAPI server at: \(apiUrl)")
-        NSLog("📸 Preparing to send photo for navigator: \(UserSession.shared.displayName ?? "unknown")")
-        NSLog("📸 Target anchor: \(selectedAnchorName ?? "unknown")")
+        NSLog("📱 Sending completion for navigator: \(UserSession.shared.displayName ?? "unknown")")
+        NSLog("🎯 Target anchor: \(selectedAnchorName ?? "unknown")")
 
         guard let url = URL(string: apiUrl) else {
             loadingAlert.dismiss(animated: true)
@@ -884,65 +860,34 @@ class NavigatorViewController: UIViewController, NISessionDelegate, UIImagePicke
             return
         }
 
-        // Prepare request
+        // Prepare JSON request
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
-        let boundary = UUID().uuidString
-        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        // Create completion data
+        let completionData: [String: Any] = [
+            "navigator_id": UserSession.shared.userId ?? "unknown",
+            "navigator_name": UserSession.shared.displayName ?? "unknown",
+            "anchor_destination": selectedAnchorName ?? "unknown",
+            "anchor_id": selectedAnchorId ?? "unknown",
+            "timestamp": ISO8601DateFormatter().string(from: Date())
+        ]
 
-        // Create multipart form data
-        var body = Data()
-
-        // Add navigator ID (Firebase userId, not display name)
-        if let navigatorId = UserSession.shared.userId {
-            body.append("--\(boundary)\r\n".data(using: .utf8)!)
-            body.append("Content-Disposition: form-data; name=\"navigator_id\"\r\n\r\n".data(using: .utf8)!)
-            body.append("\(navigatorId)\r\n".data(using: .utf8)!)  // This should be the Firebase UID
-            NSLog("📸 Sending navigator_id: \(navigatorId)")
+        do {
+            let body = try JSONSerialization.data(withJSONObject: completionData, options: [])
+            request.httpBody = body
+            NSLog("📱 Sending completion data: \(completionData)")
+        } catch {
+            loadingAlert.dismiss(animated: true) {
+                self.showError("Failed to prepare data: \(error.localizedDescription)")
+            }
+            return
         }
 
-        // Add navigator name
-        if let navigatorName = UserSession.shared.displayName {
-            body.append("--\(boundary)\r\n".data(using: .utf8)!)
-            body.append("Content-Disposition: form-data; name=\"navigator_name\"\r\n\r\n".data(using: .utf8)!)
-            body.append("\(navigatorName)\r\n".data(using: .utf8)!)
-        }
-
-        // Add anchor destination
-        if let anchorName = selectedAnchorName {
-            body.append("--\(boundary)\r\n".data(using: .utf8)!)
-            body.append("Content-Disposition: form-data; name=\"anchor_destination\"\r\n\r\n".data(using: .utf8)!)
-            body.append("\(anchorName)\r\n".data(using: .utf8)!)
-        }
-
-        // Add anchor ID
-        if let anchorId = selectedAnchorId {
-            body.append("--\(boundary)\r\n".data(using: .utf8)!)
-            body.append("Content-Disposition: form-data; name=\"anchor_id\"\r\n\r\n".data(using: .utf8)!)
-            body.append("\(anchorId)\r\n".data(using: .utf8)!)
-        }
-
-        // Add timestamp
-        body.append("--\(boundary)\r\n".data(using: .utf8)!)
-        body.append("Content-Disposition: form-data; name=\"timestamp\"\r\n\r\n".data(using: .utf8)!)
-        body.append("\(Date().timeIntervalSince1970)\r\n".data(using: .utf8)!)
-
-        // Add image data
-        body.append("--\(boundary)\r\n".data(using: .utf8)!)
-        body.append("Content-Disposition: form-data; name=\"image\"; filename=\"photo.jpg\"\r\n".data(using: .utf8)!)
-        body.append("Content-Type: image/jpeg\r\n\r\n".data(using: .utf8)!)
-        body.append(imageData)
-        body.append("\r\n".data(using: .utf8)!)
-
-        body.append("--\(boundary)--\r\n".data(using: .utf8)!)
-
-        request.httpBody = body
         request.timeoutInterval = 30  // 30 second timeout
 
-        NSLog("📸 Sending photo to server: \(apiUrl)")
-        NSLog("📸 Request body size: \(body.count) bytes")
-        NSLog("📸 Navigator: \(UserSession.shared.displayName ?? "unknown"), Anchor: \(selectedAnchorName ?? "unknown")")
+        NSLog("📱 Sending completion notification to: \(apiUrl)")
 
         // Create URL session with timeout configuration
         let config = URLSessionConfiguration.default
@@ -955,13 +900,13 @@ class NavigatorViewController: UIViewController, NISessionDelegate, UIImagePicke
             DispatchQueue.main.async {
                 loadingAlert.dismiss(animated: true) {
                     if let error = error {
-                        NSLog("❌ Error sending photo: \(error.localizedDescription)")
-                        self?.showError("Failed to send photo: \(error.localizedDescription)")
+                        NSLog("❌ Error sending completion: \(error.localizedDescription)")
+                        self?.showError("Failed to send completion: \(error.localizedDescription)")
                         return
                     }
 
                     if let httpResponse = response as? HTTPURLResponse {
-                        NSLog("📸 Server response status: \(httpResponse.statusCode)")
+                        NSLog("📱 Server response status: \(httpResponse.statusCode)")
                         if httpResponse.statusCode != 200 {
                             if let data = data, let errorString = String(data: data, encoding: .utf8) {
                                 NSLog("❌ Server error: \(errorString)")
@@ -983,21 +928,18 @@ class NavigatorViewController: UIViewController, NISessionDelegate, UIImagePicke
                         let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
                         NSLog("✅ Server response: \(json ?? [:])")
 
-                        guard let similarityScore = json?["similarity_score"] as? Double else {
-                            NSLog("❌ No similarity score in response")
-                            self?.showError("Invalid response format")
-                            return
+                        if let success = json?["success"] as? Bool, success,
+                           let contract = json?["contract"] as? [String: Any] {
+                            NSLog("✅ Smart contract created: \(contract["txId"] ?? "unknown")")
                         }
-
-                        NSLog("✅ Similarity score: \(similarityScore)%")
 
                         // Show success message
                         let successAlert = UIAlertController(
-                            title: "Mission Complete!",
-                            message: "Similarity Score: \(Int(similarityScore))%",
+                            title: "Destination Reached!",
+                            message: "You have successfully reached \(self?.selectedAnchorName ?? "the destination"). A smart contract has been created.",
                             preferredStyle: .alert
                         )
-                        successAlert.addAction(UIAlertAction(title: "Continue", style: .default) { _ in
+                        successAlert.addAction(UIAlertAction(title: "Continue Navigating", style: .default) { _ in
                             // Hide the button and continue navigating (don't disconnect!)
                             self?.reachedDestinationButton.isHidden = true
                             self?.reachedDestinationButton.alpha = 0.0
