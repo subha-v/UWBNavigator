@@ -746,20 +746,9 @@ async def navigator_completed(data: dict):
             for client in disconnected:
                 websocket_clients.remove(client)
 
-        # Send to webapp
-        async with httpx.AsyncClient() as client:
-            try:
-                webapp_response = await client.post(
-                    "http://localhost:3001/api/navigator-update",
-                    json={
-                        "type": "navigator_completed",
-                        "contract": contract
-                    },
-                    timeout=5.0
-                )
-                logger.info(f"✅ Sent contract to webapp: {webapp_response.status_code}")
-            except Exception as e:
-                logger.warning(f"⚠️ Could not send to webapp: {e}")
+        # Removed duplicate HTTP POST to webapp - using WebSocket broadcast only
+        # This prevents duplicate smart contracts from being created
+        logger.info("✅ Contract broadcast via WebSocket only (no duplicate HTTP POST)")
 
         return {
             "success": True,
