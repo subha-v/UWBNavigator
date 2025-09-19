@@ -197,7 +197,7 @@ class NavigatorViewController: UIViewController, NISessionDelegate, NetServiceBr
     
     deinit {
         // Ensure cleanup happens even if view lifecycle methods aren't called properly
-        cleanupSession()
+        cleanupSession(duringDealloc: true)
         APIServer.shared.clearNavigatorData()
         print("NavigatorViewController deallocated")
     }
@@ -764,7 +764,7 @@ class NavigatorViewController: UIViewController, NISessionDelegate, NetServiceBr
         }
     }
     
-    private func cleanupSession() {
+    private func cleanupSession(duringDealloc: Bool = false) {
         measurementTimer?.invalidate()
         measurementTimer = nil
 
@@ -794,12 +794,15 @@ class NavigatorViewController: UIViewController, NISessionDelegate, NetServiceBr
         mpc?.invalidate()
         mpc = nil
 
-        // Reset UI
-        updateStatus("Disconnected")
-        updateVisualization(from: .unknown, to: .unknown, with: nil)
+        // Only update UI if not deallocating to prevent weak reference crash
+        if !duringDealloc {
+            // Reset UI
+            updateStatus("Disconnected")
+            updateVisualization(from: .unknown, to: .unknown, with: nil)
 
-        // Clear API data
-        updateAPIData()
+            // Clear API data
+            updateAPIData()
+        }
     }
     
     private func updateMultiAnchorDisplay() {
