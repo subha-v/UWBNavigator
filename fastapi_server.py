@@ -729,11 +729,22 @@ async def navigator_completed(data: dict):
         }
 
         # Broadcast to WebSocket clients
-        await broadcast_to_websockets({
+        message = {
             "type": "navigator_completed",
             "contract": contract,
             "timestamp": datetime.now().isoformat()
-        })
+        }
+
+        with websocket_clients_lock:
+            disconnected = []
+            for client in websocket_clients:
+                try:
+                    await client.send_json(message)
+                except:
+                    disconnected.append(client)
+
+            for client in disconnected:
+                websocket_clients.remove(client)
 
         # Send to webapp
         async with httpx.AsyncClient() as client:
